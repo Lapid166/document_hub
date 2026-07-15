@@ -1,0 +1,57 @@
+@import 'tailwindcss';
+@plugin "@iconify/tailwind4";
+@plugin "flowbite/plugin";
+
+/* Import local Montserrat font weights */
+@import '@fontsource/montserrat/300.css';
+@import '@fontsource/montserrat/400.css';
+@import '@fontsource/montserrat/500.css';
+@import '@fontsource/montserrat/600.css';
+@import '@fontsource/montserrat/700.css';
+
+/* Tell Tailwind where to scan for Flowbite Svelte classes */
+@source "../node_modules/flowbite-svelte/dist";
+
+@theme {
+	--font-sans: 'Montserrat', sans-serif;
+	--font-mono: 'JetBrains Mono', monospace;
+	--ease-zen: cubic-bezier(0.25, 1, 0.5, 1);
+	--shadow-zen: 0 8px 30px rgba(24, 24, 27, 0.06);
+}
+
+/* Dark mode configuration for Flowbite */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Custom Utility Classes */
+.zen-transition {
+	transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.zen-gradient-text {
+	@apply bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 bg-clip-text text-transparent;
+}
+
+.zen-glow-emerald {
+	@apply pointer-events-none absolute rounded-full bg-emerald-400/5 blur-[140px] dark:bg-emerald-500/[0.01];
+}
+
+.zen-glow-sky {
+	@apply pointer-events-none absolute rounded-full bg-sky-400/5 blur-[140px] dark:bg-sky-500/[0.01];
+}
+
+/* Custom Scrollbar */
+.zen-scrollbar::-webkit-scrollbar {
+	width: 5px;
+	height: 5px;
+}
+.zen-scrollbar::-webkit-scrollbar-track {
+	background: transparent;
+}
+.zen-scrollbar::-webkit-scrollbar-thumb {
+	@apply rounded-full bg-zinc-200 dark:bg-zinc-800;
+}
+
+/* Focus state */
+:focus-visible {
+	@apply outline-none ring-2 ring-emerald-500/60 ring-offset-2 ring-offset-zinc-50 dark:ring-offset-zinc-950;
+}
