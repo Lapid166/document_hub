@@ -8,6 +8,7 @@
 	import Input from '$lib/components/Input.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Select from '$lib/components/Select.svelte';
+	import { invalidateAll } from '$app/navigation';
 
 	// Toast System Alert
 	let toast = $state({ show: false, text: '', type: 'success' as 'success' | 'info' | 'error' });
@@ -189,6 +190,20 @@
 	let dbPrompts = $state(data.prompts || []);
 	let dbPromptMappings = $state(data.promptMappings || []);
 
+	$effect(() => {
+		providerConnections = data.nineRouterDb?.providerConnections || [];
+	});
+	$effect(() => {
+		modelAliases = data.nineRouterDb?.modelAliases || {};
+	});
+	$effect(() => {
+		dbPrompts = data.prompts || [];
+	});
+	$effect(() => {
+		dbPromptMappings = data.promptMappings || [];
+	});
+
+
 	// Modal states for 9Router
 	let isConnectionModalOpen = $state(false);
 	let connectionEditId = $state<string | null>(null);
@@ -328,7 +343,7 @@
 		if (res.ok) {
 			triggerToast('Lưu Prompt thành công');
 			isPromptEditorModalOpen = false;
-			location.reload();
+			await invalidateAll();
 		} else {
 			triggerToast('Lỗi khi lưu Prompt', 'error');
 		}
@@ -341,7 +356,7 @@
 		const res = await fetch('?/deletePrompt', { method: 'POST', body: formData });
 		if (res.ok) {
 			triggerToast('Xóa Prompt thành công');
-			location.reload();
+			await invalidateAll();
 		} else {
 			triggerToast('Lỗi khi xóa Prompt', 'error');
 		}
@@ -364,7 +379,7 @@
 		if (res.ok) {
 			triggerToast('Lưu Ánh Xạ thành công');
 			isMappingModalOpen = false;
-			location.reload();
+			await invalidateAll();
 		} else {
 			triggerToast('Lỗi khi lưu Ánh Xạ', 'error');
 		}
@@ -377,7 +392,7 @@
 		const res = await fetch('?/deletePromptMapping', { method: 'POST', body: formData });
 		if (res.ok) {
 			triggerToast('Xóa Ánh Xạ thành công');
-			location.reload();
+			await invalidateAll();
 		} else {
 			triggerToast('Lỗi khi xóa Ánh Xạ', 'error');
 		}
