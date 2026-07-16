@@ -70,22 +70,51 @@ export async function writeNineRouterDb(data: any) {
  */
 export async function callNineRouter(
 	messages: { role: string; content: string }[],
-	model: string,
+	modelAlias: string,
 	temperature = 0.7,
 	maxTokens = 2048
 ) {
-	const apiUrl = env.NINE_ROUTER_API_URL || 'http://localhost:20128';
-	const apiKey = env.NINE_ROUTER_API_KEY || '';
-
 	try {
-		const response = await fetch(`${apiUrl}/v1/chat/completions`, {
+		// 1. Read configuration from db.json
+		const dbData = await readNineRouterDb();
+		const modelAliases = dbData.modelAliases || {};
+		const providerConnections = dbData.providerConnections || [];
+
+		// 2. Resolve model alias to actual model name
+		const actualModelName = modelAliases[modelAlias] || modelAlias;
+
+		// 3. Find the appropriate active provider connection
+		let connection = providerConnections.find((c: any) => c.isActive);
+
+		// Try to find a connection matching the provider based on model prefix
+		if (actualModelName.startsWith('gpt') || actualModelName.startsWith('text-embedding')) {
+			const openaiConn = providerConnections.find((c: any) => c.provider === 'openai' && c.isActive);
+			if (openaiConn) connection = openaiConn;
+		} else if (actualModelName.startsWith('claude')) {
+			const anthropicConn = providerConnections.find((c: any) => c.provider === 'anthropic' && c.isActive);
+			if (anthropicConn) connection = anthropicConn;
+		} else if (actualModelName.startsWith('gemini')) {
+			const googleConn = providerConnections.find((c: any) => c.provider === 'google' && c.isActive);
+			if (googleConn) connection = googleConn;
+		}
+
+		if (!connection) {
+			throw new Error('Không tìm thấy kết nối Provider hoạt động nào trong cấu hình 9Router.');
+		}
+
+		const baseURL = connection.baseURL || 'https://opencode.ai/zen/v1';
+		const apiKey = connection.apiKey || '';
+
+		console.log(`[9Router Core] Routing alias '${modelAlias}' -> model '${actualModelName}' via provider '${connection.provider}' (${baseURL})`);
+
+		const response = await fetch(`${baseURL}/chat/completions`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
+				'Authorization': `Bearer ${apiKey}`
 			},
 			body: JSON.stringify({
-				model,
+				model: actualModelName,
 				messages,
 				temperature,
 				max_tokens: maxTokens
@@ -94,7 +123,7 @@ export async function callNineRouter(
 
 		if (!response.ok) {
 			const errText = await response.text();
-			throw new Error(`9Router API returned status ${response.status}: ${errText}`);
+			throw new Error(`Provider API returned status ${response.status}: ${errText}`);
 		}
 
 		return await response.json();
@@ -109,22 +138,51 @@ export async function callNineRouter(
  */
 export async function streamNineRouter(
 	messages: { role: string; content: string }[],
-	model: string,
+	modelAlias: string,
 	temperature = 0.7,
 	maxTokens = 2048
 ) {
-	const apiUrl = env.NINE_ROUTER_API_URL || 'http://localhost:20128';
-	const apiKey = env.NINE_ROUTER_API_KEY || '';
-
 	try {
-		const response = await fetch(`${apiUrl}/v1/chat/completions`, {
+		// 1. Read configuration from db.json
+		const dbData = await readNineRouterDb();
+		const modelAliases = dbData.modelAliases || {};
+		const providerConnections = dbData.providerConnections || [];
+
+		// 2. Resolve model alias to actual model name
+		const actualModelName = modelAliases[modelAlias] || modelAlias;
+
+		// 3. Find the appropriate active provider connection
+		let connection = providerConnections.find((c: any) => c.isActive);
+
+		// Try to find a connection matching the provider based on model prefix
+		if (actualModelName.startsWith('gpt') || actualModelName.startsWith('text-embedding')) {
+			const openaiConn = providerConnections.find((c: any) => c.provider === 'openai' && c.isActive);
+			if (openaiConn) connection = openaiConn;
+		} else if (actualModelName.startsWith('claude')) {
+			const anthropicConn = providerConnections.find((c: any) => c.provider === 'anthropic' && c.isActive);
+			if (anthropicConn) connection = anthropicConn;
+		} else if (actualModelName.startsWith('gemini')) {
+			const googleConn = providerConnections.find((c: any) => c.provider === 'google' && c.isActive);
+			if (googleConn) connection = googleConn;
+		}
+
+		if (!connection) {
+			throw new Error('Không tìm thấy kết nối Provider hoạt động nào trong cấu hình 9Router.');
+		}
+
+		const baseURL = connection.baseURL || 'https://opencode.ai/zen/v1';
+		const apiKey = connection.apiKey || '';
+
+		console.log(`[9Router Core] Streaming alias '${modelAlias}' -> model '${actualModelName}' via provider '${connection.provider}' (${baseURL})`);
+
+		const response = await fetch(`${baseURL}/chat/completions`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
-				...(apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {})
+				'Authorization': `Bearer ${apiKey}`
 			},
 			body: JSON.stringify({
-				model,
+				model: actualModelName,
 				messages,
 				temperature,
 				max_tokens: maxTokens,
@@ -134,7 +192,7 @@ export async function streamNineRouter(
 
 		if (!response.ok) {
 			const errText = await response.text();
-			throw new Error(`9Router Stream API returned status ${response.status}: ${errText}`);
+			throw new Error(`Provider API returned status ${response.status}: ${errText}`);
 		}
 
 		return response.body; // Returns the ReadableStream
