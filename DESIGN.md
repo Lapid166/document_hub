@@ -53,7 +53,13 @@ Dự án sử dụng **Tailwind CSS v4** với cấu hình chủ đề và các 
   - Hổ phách (Amber): `amber-500` (`#f59e0b`) - Cảnh báo.
   - Hoa hồng (Rose): `rose-500` (`#f43f5e`) - Lỗi / Nguy hiểm.
 
-### 2.3 Các Lớp Tiện Ích Tùy Chỉnh (Custom Utility Classes)
+### 2.3 Đường Viền Mỏng Tĩnh Lặng (Subtle Silent Borders)
+Để duy trì tính tối giản và tĩnh lặng (Zen), các đường viền phân tách khu vực hoặc bao bọc component phải cực kỳ mỏng và mờ, tuyệt đối không được dùng màu đậm nguyên bản gây thô ráp cho UI:
+- **Light mode**: Sử dụng `border-zinc-200/50` hoặc `border-zinc-200/30` (hoặc màu tương đương với opacity 30% - 50%).
+- **Dark mode**: Sử dụng `border-zinc-800/50` hoặc `border-zinc-800/30` (opacity 30% - 50%).
+- **Cách áp dụng**: Tránh dùng `border-zinc-200` hay `border-zinc-300` nguyên bản; luôn sử dụng kèm theo hậu tố opacity (ví dụ `border-zinc-200/30` cho các vách ngăn mỏng).
+
+### 2.4 Các Lớp Tiện Ích Tùy Chỉnh (Custom Utility Classes)
 - **Chuyển động mượt mà**: `.zen-transition { transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1); }`
 - **Hiệu ứng chữ chuyển sắc**: `.zen-gradient-text { @apply bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 bg-clip-text text-transparent; }`
 - **Vòng tròn phát sáng hậu cảnh (Glow Blobs)**:

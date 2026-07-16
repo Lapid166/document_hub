@@ -2,6 +2,52 @@
 @plugin "@iconify/tailwind4";
 @plugin "flowbite/plugin";
 
+/* Quản lý cuộn duy nhất tại cấp độ HTML để tránh 2 thanh scrollbar dọc */
+html {
+	overflow-y: scroll;
+	overflow-x: hidden;
+	scrollbar-width: thin;
+	scrollbar-color: #e4e4e7 transparent;
+	scroll-behavior: smooth;
+}
+
+html.dark {
+	scrollbar-color: #27272a transparent;
+}
+
+/* Body tuyệt đối không đặt overflow để giữ trạng thái visible mặc định, tránh tự sinh scrollbar dọc */
+body {
+	margin: 0;
+	padding: 0;
+	min-height: 100vh;
+	width: 100%;
+}
+
+/* Custom Scrollbar toàn cục đồng bộ với màu sắc site */
+::-webkit-scrollbar {
+	width: 8px;
+	height: 8px;
+}
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+::-webkit-scrollbar-thumb {
+	background: #e4e4e7;
+	border-radius: 9999px;
+	border: 2px solid transparent;
+	background-clip: padding-box;
+}
+.dark ::-webkit-scrollbar-thumb {
+	background: #27272a;
+	border: 2px solid transparent;
+	background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+	background: #10b981;
+	border: 2px solid transparent;
+	background-clip: padding-box;
+}
+
 /* Import local Montserrat font weights */
 @import '@fontsource/montserrat/300.css';
 @import '@fontsource/montserrat/400.css';
@@ -17,6 +63,12 @@
 	--font-mono: 'JetBrains Mono', monospace;
 	--ease-zen: cubic-bezier(0.25, 1, 0.5, 1);
 	--shadow-zen: 0 8px 30px rgba(24, 24, 27, 0.06);
+
+	/* Tối ưu hóa độ tương phản và thẩm mỹ cho Dark Mode (Zen Premium style) */
+	--color-zinc-950: #050507; /* Nền trang sâu và sang trọng hơn */
+	--color-zinc-900: #121216; /* Nền card, input, dropdown có độ tương phản tốt */
+	--color-zinc-850: #1b1b22; /* Màu trung gian cho các card phụ, badge */
+	--color-zinc-800: #25252e; /* Viền separator rõ nét hơn */
 }
 
 /* Dark mode configuration for Flowbite */
@@ -37,18 +89,6 @@
 
 .zen-glow-sky {
 	@apply pointer-events-none absolute rounded-full bg-sky-400/5 blur-[140px] dark:bg-sky-500/[0.01];
-}
-
-/* Custom Scrollbar */
-.zen-scrollbar::-webkit-scrollbar {
-	width: 5px;
-	height: 5px;
-}
-.zen-scrollbar::-webkit-scrollbar-track {
-	background: transparent;
-}
-.zen-scrollbar::-webkit-scrollbar-thumb {
-	@apply rounded-full bg-zinc-200 dark:bg-zinc-800;
 }
 
 /* Focus state */
