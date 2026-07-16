@@ -382,6 +382,31 @@
 			triggerToast('Lỗi khi xóa Ánh Xạ', 'error');
 		}
 	}
+
+	// Searchable Model Alias dropdown states
+	let isModelAliasDropdownOpen = $state(false);
+	let modelAliasSearchQuery = $state('');
+	let filteredModelAliases = $derived.by(() => {
+		const query = modelAliasSearchQuery.trim().toLowerCase();
+		const keys = Object.keys(modelAliases);
+		if (!query) return keys;
+		return keys.filter(k => k.toLowerCase().includes(query));
+	});
+
+	function clickOutsideModelAlias(node: HTMLElement) {
+		const handleClick = (event: MouseEvent) => {
+			if (node && !node.contains(event.target as Node) && !event.defaultPrevented) {
+				isModelAliasDropdownOpen = false;
+			}
+		};
+		document.addEventListener('click', handleClick, true);
+		return {
+			destroy() {
+				document.removeEventListener('click', handleClick, true);
+			}
+		};
+	}
+
 </script>
 
 <div class="flex flex-col gap-6 w-full animate-slide-in">
@@ -766,7 +791,83 @@
 		<div class="flex flex-col gap-4 py-2 font-sans">
 			<div class="grid grid-cols-2 gap-4">
 				<Input id="prompt-nm" label="Tên Prompt" placeholder="Ví dụ: Viết FAQ chuẩn hóa" bind:value={promptName} />
-				<Input id="prompt-alias" label="Model Alias đích (9Router)" placeholder="Ví dụ: smart-model" bind:value={promptModelAlias} />
+			<div class="relative">
+				<label class="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 font-sans" for="prompt-alias">Model Alias đích (9Router)</label>
+				<div class="relative" use:clickOutsideModelAlias>
+					<button
+						id="prompt-alias"
+						type="button"
+						class="flex min-h-10 w-full items-center justify-between gap-2 rounded-xl border bg-zinc-50/50 px-3 py-2 text-left text-sm text-zinc-900 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-950/40 dark:text-zinc-550 border-zinc-200 hover:border-emerald-500/50 focus:border-emerald-500 focus:ring-emerald-500/20 dark:border-zinc-800/80 dark:hover:border-emerald-500/50 focus:outline-none focus:ring-2 cursor-pointer font-mono"
+						onclick={() => isModelAliasDropdownOpen = !isModelAliasDropdownOpen}
+					>
+						<span class="truncate font-semibold">{promptModelAlias || 'Chọn một Model Alias'}</span>
+						<span class="icon-[lucide--chevron-down] text-zinc-400 h-4.5 w-4.5"></span>
+					</button>
+
+					{#if isModelAliasDropdownOpen}
+						<div class="absolute z-50 mt-1.5 max-h-60 w-full overflow-auto rounded-xl border border-zinc-200/70 bg-white/95 p-2 shadow-xl shadow-zinc-950/5 backdrop-blur-xl dark:border-zinc-800/80 dark:bg-zinc-900/95 flex flex-col gap-2">
+							<input
+								type="text"
+								placeholder="Tìm kiếm Model Alias..."
+								bind:value={modelAliasSearchQuery}
+								class="w-full text-xs rounded-lg border border-zinc-200 bg-zinc-50/30 px-2.5 py-1.5 text-zinc-950 focus:border-emerald-500 focus:outline-none dark:border-zinc-800 dark:bg-zinc-950/40 dark:text-white"
+								onclick={(e) => e.stopPropagation()}
+							/>
+
+							<div class="flex flex-col max-h-[160px] overflow-y-auto zen-scrollbar">
+								{#if filteredModelAliases.length === 0}
+									{#if modelAliasSearchQuery.trim()}
+										<button
+											type="button"
+											class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400 dark:hover:bg-emerald-500/10 cursor-pointer font-bold font-sans"
+											onclick={() => {
+												promptModelAlias = modelAliasSearchQuery.trim();
+												isModelAliasDropdownOpen = false;
+											}}
+										>
+											+ Sử dụng alias "{modelAliasSearchQuery.trim()}"
+										</button>
+									{:else}
+										<div class="text-[11px] text-zinc-400 text-center py-2 font-sans">Chưa cấu hình Model Alias nào</div>
+									{/if}
+								{:else}
+									{#each filteredModelAliases as alias}
+										<button
+											type="button"
+											class="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition-all duration-200 text-zinc-650 hover:bg-zinc-50 hover:text-zinc-900 dark:text-zinc-350 dark:hover:bg-zinc-850/50 dark:hover:text-zinc-50 cursor-pointer {promptModelAlias === alias ? 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 font-bold' : ''}"
+											onclick={() => {
+												promptModelAlias = alias;
+												isModelAliasDropdownOpen = false;
+											}}
+										>
+											<div class="flex flex-col font-sans">
+												<span class="font-mono font-bold text-left">{alias}</span>
+												<span class="text-[9px] text-zinc-450 font-mono mt-0.5 text-left">({modelAliases[alias]})</span>
+											</div>
+											{#if promptModelAlias === alias}
+												<span class="icon-[lucide--check] h-3.5 w-3.5 text-emerald-500"></span>
+											{/if}
+										</button>
+									{/each}
+									
+									{#if modelAliasSearchQuery.trim() && !filteredModelAliases.includes(modelAliasSearchQuery.trim())}
+										<button
+											type="button"
+											class="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400 dark:hover:bg-emerald-500/10 cursor-pointer font-bold font-sans border-t border-zinc-100 dark:border-zinc-800 pt-2 mt-1"
+											onclick={() => {
+												promptModelAlias = modelAliasSearchQuery.trim();
+												isModelAliasDropdownOpen = false;
+											}}
+										>
+											+ Sử dụng alias "{modelAliasSearchQuery.trim()}"
+										</button>
+									{/if}
+								{/if}
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
 			</div>
 
 			<Input id="prompt-desc" label="Mô tả công dụng của Prompt" placeholder="Ví dụ: Prompt chuyên trách tạo câu hỏi thường gặp..." bind:value={promptDescription} />
