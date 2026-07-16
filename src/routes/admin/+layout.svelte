@@ -24,29 +24,38 @@
 	// Navigation menu items
 	const menuItems = [
 		{ name: 'Tổng Quan', href: '/admin', icon: 'icon-[lucide--layout-dashboard]' },
-		{ name: 'Sản Phẩm', href: '/admin?tab=products', icon: 'icon-[lucide--package]' },
-		{ name: 'Thống Kê', href: '/admin?tab=analytics', icon: 'icon-[lucide--bar-chart-3]' },
-		{ name: 'API & Chatbots', href: '/admin?tab=api', icon: 'icon-[lucide--key-round]' },
+		{ name: 'Sản Phẩm', href: '/admin/products', icon: 'icon-[lucide--package]' },
+		{ name: 'Thống Kê', href: '/admin/analytics', icon: 'icon-[lucide--bar-chart-3]' },
+		{ name: 'API & Chatbots', href: '/admin/api', icon: 'icon-[lucide--key-round]' },
 		{
 			name: 'Hỗ Trợ / Feedback',
-			href: '/admin?tab=tickets',
+			href: '/admin/tickets',
 			icon: 'icon-[lucide--message-square]'
 		},
-		{ name: 'Cấu Hình', href: '/admin?tab=settings', icon: 'icon-[lucide--settings]' }
+		{ name: 'Cấu Hình', href: '/admin/settings', icon: 'icon-[lucide--settings]' }
 	];
 
-	// Get active tab from URL search parameters to sync layout links
-	let currentTab = $derived(page.url.searchParams.get('tab') || 'overview');
+	// Get active tab from URL path to sync layout links
 	let currentPath = $derived(page.url.pathname);
+	let currentTab = $derived(
+		currentPath === '/admin' ? 'overview' :
+		currentPath.startsWith('/admin/products') ? 'products' :
+		currentPath.startsWith('/admin/analytics') ? 'analytics' :
+		currentPath.startsWith('/admin/api') ? 'api' :
+		currentPath.startsWith('/admin/tickets') ? 'tickets' :
+		currentPath.startsWith('/admin/settings') ? 'settings' :
+		currentPath.startsWith('/admin/profile') ? 'profile' :
+		'overview'
+	);
+	
 	let isProductsActive = $derived(
-		currentTab === 'products' ||
 		currentPath.startsWith('/admin/products') ||
 		currentPath.startsWith('/admin/categories') ||
 		currentPath.startsWith('/admin/tags')
 	);
 	let isProductMenuOpen = $state(true);
 
-	let allProdActive = $derived((currentPath === '/admin' && currentTab === 'products') || currentPath.includes('/edit'));
+	let allProdActive = $derived(currentPath === '/admin/products' || (currentPath.includes('/admin/products/') && currentPath.includes('/edit')));
 	let createProdActive = $derived(currentPath === '/admin/products/create');
 	let categoriesActive = $derived(currentPath.startsWith('/admin/categories'));
 	let tagsActive = $derived(currentPath.startsWith('/admin/tags'));
@@ -56,9 +65,9 @@
 			return isProductsActive;
 		}
 		if (item.href === '/admin') {
-			return currentTab === 'overview' && currentPath === '/admin';
+			return currentPath === '/admin';
 		}
-		return item.href.includes(`tab=${currentTab}`);
+		return currentPath.startsWith(item.href);
 	}
 </script>
 
@@ -138,7 +147,7 @@
 							{#if isProductMenuOpen}
 								<div class="flex flex-col gap-1 pl-9 pr-2 mt-1 animate-slide-in">
 									<a
-										href="/admin?tab=products"
+										href="/admin/products"
 										class="px-3 py-2 text-xs font-semibold transition-all
 										{allProdActive
 											? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border-l-2 border-emerald-500 rounded-l-none pl-2.5'
