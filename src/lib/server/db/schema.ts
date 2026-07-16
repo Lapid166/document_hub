@@ -382,3 +382,42 @@ export const productKnowledgeVectors = pgTable(
 	},
 	(t) => [index('idx_product_vectors_product').on(t.productId)]
 );
+
+// ─── AI Prompts & Assistants ────────────────────────────────
+
+export const aiPrompts = pgTable('ai_prompts', {
+	id: uuid('id').primaryKey().defaultRandom(),
+	organizationId: uuid('organization_id')
+		.references(() => organizations.id, { onDelete: 'cascade' })
+		.notNull(),
+	name: varchar('name', { length: 255 }).notNull(),
+	description: text('description'),
+	systemPrompt: text('system_prompt').notNull(),
+	temperature: real('temperature').default(0.7),
+	maxTokens: integer('max_tokens').default(2048),
+	modelAlias: varchar('model_alias', { length: 255 }).notNull(), // maps to 9router model alias
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow()
+});
+
+export const aiPromptMappings = pgTable('ai_prompt_mappings', {
+	id: uuid('id').primaryKey().defaultRandom(),
+	organizationId: uuid('organization_id')
+		.references(() => organizations.id, { onDelete: 'cascade' })
+		.notNull(),
+	featureCode: varchar('feature_code', { length: 100 }).notNull(), // product_short_desc, product_detailed_desc, product_guide, product_faq, product_changelog, product_chat, homepage_chat
+	promptId: uuid('prompt_id')
+		.references(() => aiPrompts.id, { onDelete: 'cascade' })
+		.notNull(),
+	productId: uuid('product_id')
+		.references(() => products.id, { onDelete: 'cascade' }), // null for global default mapping
+	isActive: boolean('is_active').default(true),
+	guestDailyQuota: integer('guest_daily_quota').default(10), // Limit for guests
+	userDailyQuota: integer('user_daily_quota').default(50), // Limit for registered users
+	enablePow: boolean('enable_pow').default(true), // Enable Proof of Work
+	enableFingerprint: boolean('enable_fingerprint').default(true), // Enable Canvas Fingerprint
+	dailyTokenBudget: real('daily_token_budget').default(5.0), // Daily token budget in USD for circuit breaker
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow()
+});
+

@@ -164,40 +164,88 @@
 		}
 	}
 
-	// Chat message handlers
-	function sendMessage() {
+	function getFormattedTime() {
+		const now = new Date();
+		return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+	}
+
+	// Chat message handlers (streaming SSE RAG chatbot)
+	async function sendMessage() {
 		if (!newMessage.trim()) return;
 
-		const now = new Date();
-		const timeString = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-		messages = [...messages, { sender: 'user', text: newMessage.trim(), time: timeString }];
-		const sentText = newMessage.trim();
+		const userMsg = newMessage.trim();
+		const time = getFormattedTime();
+		messages = [...messages, { sender: 'user', text: userMsg, time }];
 		newMessage = '';
 
 		isTyping = true;
-		setTimeout(() => {
-			isTyping = false;
-			const botReply = getBotResponse(sentText);
-			messages = [...messages, { sender: 'bot', text: botReply, time: timeString }];
-		}, 1000);
-	}
 
-	function getBotResponse(input: string): string {
-		const lower = input.toLowerCase();
-		if (lower.includes('xin chào') || lower.includes('hello') || lower.includes('hi')) {
-			return 'Xin chào! Rất vui được trò chuyện với bạn. Hôm nay bạn cần hỗ trợ thông tin gì?';
+		// Add an empty bot message to append stream chunks to
+		const botMessageIndex = messages.length;
+		messages = [...messages, { sender: 'bot', text: '', time: getFormattedTime() }];
+
+		try {
+			const res = await fetch('/api/ai/chat', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ message: userMsg })
+			});
+
+			isTyping = false;
+
+			if (!res.ok) {
+				messages[botMessageIndex].text = 'Lỗi kết nối với máy chủ chatbot.';
+				messages = [...messages];
+				return;
+			}
+
+			const reader = res.body?.getReader();
+			const decoder = new TextDecoder();
+			if (!reader) {
+				messages[botMessageIndex].text = 'Không thể tạo bộ đọc luồng dữ liệu.';
+				messages = [...messages];
+				return;
+			}
+
+			let streamText = '';
+			let buffer = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() || '';
+
+				for (const line of lines) {
+					const cleanLine = line.trim();
+					if (!cleanLine) continue;
+					if (cleanLine.startsWith('data: ')) {
+						const dataStr = cleanLine.slice(6);
+						if (dataStr === '[DONE]') {
+							break;
+						}
+						try {
+							const parsed = JSON.parse(dataStr);
+							if (parsed.text) {
+								streamText += parsed.text;
+								messages[botMessageIndex].text = streamText;
+								messages = [...messages]; // Trigger Svelte reactivity
+							}
+						} catch (err) {
+							// Incomplete JSON
+						}
+					}
+				}
+			}
+		} catch (err) {
+			isTyping = false;
+			messages[botMessageIndex].text = 'Không thể gửi tin nhắn. Vui lòng kiểm tra kết nối mạng của bạn.';
+			messages = [...messages];
 		}
-		if (lower.includes('game') || lower.includes('trò chơi')) {
-			return 'Chúng tôi hiện tại có 22 mini games độc đáo thuộc nhiều thể loại như Nhập Vai, Kỹ Năng, Hàng Ngày, Giải Đố và Casual!';
-		}
-		if (lower.includes('đăng nhập') || lower.includes('login')) {
-			return 'Bạn có thể đăng nhập bằng cách bấm vào nút "Đăng Nhập" ở góc trên bên phải trang chủ, hoặc truy cập trang /auth?mode=login.';
-		}
-		if (lower.includes('đăng ký') || lower.includes('register')) {
-			return 'Để tạo tài khoản mới, hãy nhấn vào nút "Đăng Ký Ngay" ở phần đầu trang chủ hoặc chuyển đổi tab tại trang /auth?mode=register.';
-		}
-		return 'Cảm ơn thông tin của bạn. AI Hub vẫn đang được phát triển thêm để kết nối tốt hơn!';
 	}
 </script>
 

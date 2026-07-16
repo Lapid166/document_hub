@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { readNineRouterDb } from './nineRouter';
 
 export interface GeneratedContent {
 	detailedDescription: string;
@@ -163,13 +164,33 @@ export async function chatRAGStream(
 	query: string,
 	context: string
 ): Promise<ReadableStream> {
-	const apiKey = env.OPENAI_API_KEY;
+	let apiKey = '';
+	let baseURL = 'https://api.openai.com/v1';
+	let modelName = 'gpt-4o-mini';
+
+	try {
+		const dbData = await readNineRouterDb();
+		const activeConn = dbData.providerConnections.find((c: any) => c.isActive);
+		if (activeConn) {
+			apiKey = activeConn.apiKey || '';
+			baseURL = activeConn.baseURL || 'https://api.openai.com/v1';
+			const rawModel = dbData.modelAliases['fast-model'] || 'gpt-4o-mini';
+			modelName = rawModel;
+		}
+	} catch (e) {
+		console.warn('Failed to load 9Router config in chatRAGStream, falling back to env keys.', e);
+	}
 
 	if (!apiKey) {
-		// Simulated SSE stream generator
+		apiKey = env.OPENAI_API_KEY || '';
+	}
+
+	let cleanBaseURL = baseURL.replace(/\/+$/, '');
+
+	if (!apiKey) {
 		const words = `Tôi là trợ lý AI chuyên biệt của **${productName}**. Dựa vào tài liệu của sản phẩm, tôi xin phép trả lời câu hỏi của bạn:\n\n${
 			context 
-				? `Dữ liệu tham chiếu tìm thấy:\n${context.substring(0, 200)}...\n\nĐây là câu trả lời mô phỏng do hệ thống chưa cấu hình OPENAI_API_KEY trong tệp .env.` 
+				? `Dữ liệu tham chiếu tìm thấy:\n${context.substring(0, 200)}...\n\nĐây là câu trả lời mô phỏng do hệ thống chưa cấu hình API Key của nhà cung cấp trong AI Console.` 
 				: 'Tôi xin lỗi, câu hỏi nằm ngoài phạm vi tài liệu hướng dẫn của công cụ này.'
 		}`.split(' ');
 
@@ -177,7 +198,6 @@ export async function chatRAGStream(
 			async start(controller) {
 				const encoder = new TextEncoder();
 				for (const word of words) {
-					// SSE format: data: <content>
 					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: word + ' ' })}\n\n`));
 					await new Promise((resolve) => setTimeout(resolve, 80));
 				}
@@ -188,14 +208,14 @@ export async function chatRAGStream(
 	}
 
 	try {
-		const response = await fetch('https://api.openai.com/v1/chat/completions', {
+		const response = await fetch(`${cleanBaseURL}/chat/completions`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 				Authorization: `Bearer ${apiKey}`
 			},
 			body: JSON.stringify({
-				model: 'gpt-4o-mini',
+				model: modelName,
 				stream: true,
 				messages: [
 					{
@@ -223,7 +243,6 @@ Strict Rules:
 			throw new Error(`OpenAI Chat completions stream failed: ${errorText}`);
 		}
 
-		// Forward OpenAI steam to our SSE client
 		return new ReadableStream({
 			async start(controller) {
 				const reader = response.body?.getReader();

@@ -200,3 +200,40 @@ export async function querySimilarContext(
 		return '';
 	}
 }
+
+/**
+ * Queries all product knowledge vectors globally (for general homepage chatbot).
+ * Returns matching chunks joined with product name context.
+ */
+export async function queryGlobalSimilarContext(
+	queryText: string,
+	limit = 4,
+	similarityThreshold = 0.60
+): Promise<string> {
+	try {
+		const queryVector = await generateEmbedding(queryText);
+		const vectorStr = `[${queryVector.join(',')}]`;
+
+		const results = await db.execute(sql`
+			SELECT v.content, v.metadata, p.name as product_name, (1 - (v.embedding <=> ${vectorStr}::vector)) as similarity
+			FROM product_knowledge_vectors v
+			JOIN products p ON v.product_id = p.id
+			WHERE (1 - (v.embedding <=> ${vectorStr}::vector)) >= ${similarityThreshold}
+			ORDER BY v.embedding <=> ${vectorStr}::vector
+			LIMIT ${limit};
+		`);
+
+		if (!results || results.length === 0) {
+			return '';
+		}
+
+		const context = results
+			.map((row: any) => `[Sản phẩm: ${row.product_name} - Nguồn: ${row.metadata?.source || 'Tài liệu'}]\n${row.content}`)
+			.join('\n\n---\n\n');
+
+		return context;
+	} catch (e) {
+		console.error('Global Vector query search failed:', e);
+		return '';
+	}
+}

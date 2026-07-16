@@ -1,0 +1,25 @@
+{
+  "providerConnections": [
+    {
+      "id": "opencode-demo-connection",
+      "provider": "opencode",
+      "apiKey": "sk-fPJPzWaLC6doPyRTclW9j34DBIZX6UQYwA8xIus4NQiqmskh6XA8wQKHeXquPKsF",
+      "authType": "api_key",
+      "label": "OpenCode Demo Gateway",
+      "baseURL": "https://opencode.ai/zen/v1",
+      "isActive": true
+    }
+  ],
+  "modelAliases": {
+    "fast-model": "gemini-1.5-flash",
+    "smart-model": "claude-3-5-sonnet",
+    "code-model": "deepseek-coder"
+  },
+  "providerNodes": [],
+  "apiKeys": [],
+  "combos": [],
+  "settings": {
+    "defaultModel": "fast-model"
+  },
+  "pricing": {}
+}
