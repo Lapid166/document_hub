@@ -32,19 +32,26 @@ export const POST: RequestHandler = async (event) => {
 		const user = event.locals.user;
 
 		// 1. Find prompt mapping
-		// First check for product-specific override
-		let [mapping] = await db
-			.select()
-			.from(aiPromptMappings)
-			.where(
-				and(
-					eq(aiPromptMappings.featureCode, featureCode),
-					eq(aiPromptMappings.productId, productId || ''),
-					eq(aiPromptMappings.organizationId, orgId),
-					eq(aiPromptMappings.isActive, true)
+		// First check for product-specific override if productId is a valid UUID
+		let mapping = null;
+		const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+		const isValidUuid = productId && uuidRegex.test(productId);
+
+		if (isValidUuid) {
+			const rows = await db
+				.select()
+				.from(aiPromptMappings)
+				.where(
+					and(
+						eq(aiPromptMappings.featureCode, featureCode),
+						eq(aiPromptMappings.productId, productId),
+						eq(aiPromptMappings.organizationId, orgId),
+						eq(aiPromptMappings.isActive, true)
+					)
 				)
-			)
-			.limit(1);
+				.limit(1);
+			mapping = rows[0];
+		}
 
 		// If not found, check global default mapping (productId is null)
 		if (!mapping) {
