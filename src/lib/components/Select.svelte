@@ -132,7 +132,7 @@
 			aria-labelledby={id}
 			class="absolute z-40 mt-1.5 max-h-60 w-full overflow-auto rounded-xl border border-zinc-200/70 bg-white/95 p-1 shadow-xl shadow-zinc-950/5 backdrop-blur-xl dark:border-zinc-800/80 dark:bg-zinc-900/95"
 		>
-			{#each options as option}
+			{#each options as option (option.value)}
 				<button
 					type="button"
 					role="option"

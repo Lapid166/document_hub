@@ -340,10 +340,10 @@
 		<input type="hidden" name="enableFaqs" value={enableFaqs.toString()} />
 		<input type="hidden" name="guidesJson" value={guidesJson} />
 		<input type="hidden" name="faqsJson" value={faqsJson} />
-		{#each selectedTagIds as tagId}
+		{#each selectedTagIds as tagId (tagId)}
 			<input type="hidden" name="tagIds" value={tagId} />
 		{/each}
-		{#each selectedCategoryIds as catId}
+		{#each selectedCategoryIds as catId (catId)}
 			<input type="hidden" name="categoryIds" value={catId} />
 		{/each}
 
@@ -572,7 +572,7 @@
 										Chưa có bước hướng dẫn nào. Nhấn Thêm Bước hoặc dùng Trợ lý AI để tự động tạo.
 									</div>
 								{:else}
-									{#each guidesList as step, index}
+									{#each guidesList as step, index (index)}
 										<div class="flex flex-col gap-2 p-3 bg-zinc-50/50 dark:bg-zinc-800/20 border border-zinc-200/50 dark:border-zinc-850 rounded-xl relative animate-slide-in">
 											<button
 												type="button"
@@ -632,7 +632,7 @@
 										Chưa có câu hỏi FAQ nào. Hãy tạo thêm hoặc sử dụng Trợ lý AI để trích xuất nhanh.
 									</div>
 								{:else}
-									{#each faqsList as item, index}
+									{#each faqsList as item, index (index)}
 										<div class="flex flex-col gap-2 p-3 bg-zinc-50/50 dark:bg-zinc-800/20 border border-zinc-200/50 dark:border-zinc-850 rounded-xl relative animate-slide-in">
 											<button
 												type="button"
@@ -794,7 +794,7 @@
 								Chưa có trường tùy biến nào. Nhấn nút thêm để tạo.
 							</div>
 						{:else}
-							{#each customFields as field, index}
+							{#each customFields as field, index (index)}
 								<div class="flex items-center gap-3 animate-slide-in">
 									<div class="flex-grow grid grid-cols-2 gap-3">
 										<Input
@@ -839,7 +839,7 @@
 								Chưa có danh mục nào. Hãy tạo danh mục trước ở trang Quản lý Danh mục.
 							</div>
 						{:else}
-							{#each data.categories as category}
+							{#each data.categories as category (category.id)}
 								<label class="flex items-center gap-2.5 text-sm text-zinc-700 dark:text-zinc-300 cursor-pointer">
 									<input
 										type="checkbox"
@@ -886,6 +886,7 @@
 							</div>
 							<button
 								type="button"
+								aria-label="Bật tắt slideshow"
 								onclick={() => {
 									enableSlideshow = !enableSlideshow;
 								}}
@@ -908,6 +909,7 @@
 							</div>
 							<button
 								type="button"
+								aria-label="Bật tắt hướng dẫn cài đặt"
 								onclick={() => {
 									enableGuides = !enableGuides;
 								}}
@@ -930,6 +932,7 @@
 							</div>
 							<button
 								type="button"
+								aria-label="Bật tắt hỏi đáp FAQ"
 								onclick={() => {
 									enableFaqs = !enableFaqs;
 								}}
@@ -952,6 +955,7 @@
 							</div>
 							<button
 								type="button"
+								aria-label="Bật tắt tải về sản phẩm"
 								onclick={() => {
 									enableDownload = !enableDownload;
 								}}
@@ -980,7 +984,7 @@
 								Chưa có thẻ tag nào. Tạo thẻ tag trước ở trang Quản lý Tags.
 							</div>
 						{:else}
-							{#each data.tags as tag}
+							{#each data.tags as tag (tag.id)}
 								{@const isSelected = selectedTagIds.includes(tag.id)}
 								<button
 									type="button"

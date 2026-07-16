@@ -13,9 +13,13 @@
 
 	let { data, form } = $props();
 
-	let name = $state(data.product.name);
-	let slug = $state(data.product.slug);
-	let selectedCategoryIds = $state<string[]>([...data.selectedCategoryIds]);
+	const initialProduct = data.product;
+	const initialSelectedCategoryIds = data.selectedCategoryIds;
+	const initialSelectedTagIds = data.selectedTagIds;
+
+	let name = $state(initialProduct.name);
+	let slug = $state(initialProduct.slug);
+	let selectedCategoryIds = $state<string[]>([...initialSelectedCategoryIds]);
 	let categoryId = $derived(selectedCategoryIds[0] || '');
 
 	function toggleCategory(catId: string) {
@@ -25,22 +29,22 @@
 			selectedCategoryIds = [...selectedCategoryIds, catId];
 		}
 	}
-	let description = $state(data.product.description || '');
-	let detailedDescription = $state(data.product.detailedDescription || '');
-	let icon = $state(data.product.icon || 'icon-[lucide--package]');
-	let iconColor = $state(data.product.iconColor || 'text-emerald-500 bg-emerald-500/10');
+	let description = $state(initialProduct.description || '');
+	let detailedDescription = $state(initialProduct.detailedDescription || '');
+	let icon = $state(initialProduct.icon || 'icon-[lucide--package]');
+	let iconColor = $state(initialProduct.iconColor || 'text-emerald-500 bg-emerald-500/10');
 
-	let liveDemoUrl = $state(data.product.liveDemoUrl || '');
-	let wpVersion = $state(data.product.wpVersion || '');
-	let phpVersion = $state(data.product.phpVersion || '');
-	let author = $state(data.product.author || '');
+	let liveDemoUrl = $state(initialProduct.liveDemoUrl || '');
+	let wpVersion = $state(initialProduct.wpVersion || '');
+	let phpVersion = $state(initialProduct.phpVersion || '');
+	let author = $state(initialProduct.author || '');
 
-	let enableDownload = $state(data.product.enableDownload || false);
+	let enableDownload = $state(initialProduct.enableDownload || false);
 
 	// Toggles
-	let enableSlideshow = $state(data.product.enableSlideshow ?? true);
-	let enableGuides = $state(data.product.enableGuides ?? true);
-	let enableFaqs = $state(data.product.enableFaqs ?? true);
+	let enableSlideshow = $state(initialProduct.enableSlideshow ?? true);
+	let enableGuides = $state(initialProduct.enableGuides ?? true);
+	let enableFaqs = $state(initialProduct.enableFaqs ?? true);
 
 	// Left column tab control
 	let activeTab = $state('basic');
@@ -113,7 +117,7 @@
 	}
 
 	// Guides state
-	let guidesList = $state<{ title: string; content: string }[]>((data.product.guides as any) || []);
+	let guidesList = $state<{ title: string; content: string }[]>((initialProduct.guides as any) || []);
 	function addGuideStep() {
 		guidesList = [...guidesList, { title: '', content: '' }];
 	}
@@ -123,7 +127,7 @@
 	let guidesJson = $derived(JSON.stringify(guidesList));
 
 	// FAQs state
-	let faqsList = $state<{ question: string; answer: string }[]>((data.product.faqs as any) || []);
+	let faqsList = $state<{ question: string; answer: string }[]>((initialProduct.faqs as any) || []);
 	function addFaqItem() {
 		faqsList = [...faqsList, { question: '', answer: '' }];
 	}
@@ -139,11 +143,11 @@
 	});
 
 	// Selected tags
-	let selectedTagIds = $state<string[]>([...data.selectedTagIds]);
+	let selectedTagIds = $state<string[]>([...initialSelectedTagIds]);
 
 	// Custom fields (load from JSON)
 	let customFields = $state<{ key: string; value: string }[]>(
-		Object.entries((data.product.customFields as any) || {}).map(([key, value]) => ({
+		Object.entries((initialProduct.customFields as any) || {}).map(([key, value]) => ({
 			key,
 			value: value as string
 		}))
@@ -935,6 +939,7 @@
 							</div>
 							<button
 								type="button"
+								aria-label="Bật tắt slideshow"
 								onclick={() => {
 									enableSlideshow = !enableSlideshow;
 								}}
@@ -957,6 +962,7 @@
 							</div>
 							<button
 								type="button"
+								aria-label="Bật tắt hướng dẫn cài đặt"
 								onclick={() => {
 									enableGuides = !enableGuides;
 								}}
@@ -979,6 +985,7 @@
 							</div>
 							<button
 								type="button"
+								aria-label="Bật tắt hỏi đáp FAQ"
 								onclick={() => {
 									enableFaqs = !enableFaqs;
 								}}
@@ -1001,6 +1008,7 @@
 							</div>
 							<button
 								type="button"
+								aria-label="Bật tắt tải về sản phẩm"
 								onclick={() => {
 									enableDownload = !enableDownload;
 								}}

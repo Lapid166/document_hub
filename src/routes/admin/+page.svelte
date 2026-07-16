@@ -1,5 +1,8 @@
 <script lang="ts">
 	let { data } = $props();
+	const initialProducts = data.products;
+	const initialAllowedDomains = data.allowedDomains;
+	const initialStorageSettings = data.storageSettings;
 	import { page } from '$app/state';
 	import Card from '$lib/components/Card.svelte';
 	import Button from '$lib/components/Button.svelte';
@@ -70,7 +73,7 @@
 	// ==========================================
 	// 2. PRODUCT MANAGEMENT STATE (TAB: PRODUCTS)
 	// ==========================================
-	let adminProducts = $state<any[]>([...data.products]);
+	let adminProducts = $state<any[]>([...initialProducts]);
 	let totalProducts = $derived(adminProducts.length);
 	let totalDownloads = $derived(adminProducts.reduce((sum, p) => sum + (p.downloadsCount || 0), 0));
 
@@ -625,7 +628,7 @@
 	// ==========================================
 	// 6. SYSTEM SETTINGS & SECURITY CONTROL (TAB: SETTINGS)
 	// ==========================================
-	let allowedDomains = $state([...data.allowedDomains]);
+	let allowedDomains = $state([...initialAllowedDomains]);
 	let newDomainInput = $state('');
 
 	async function addDomain() {
@@ -683,12 +686,12 @@
 	}
 
 	// Storage settings state
-	let storageType = $state(data.storageSettings?.type || 'local');
-	let s3Endpoint = $state(data.storageSettings?.s3?.endpoint || '');
-	let s3AccessKey = $state(data.storageSettings?.s3?.accessKey || '');
-	let s3SecretKey = $state(data.storageSettings?.s3?.secretKey || '');
-	let s3Bucket = $state(data.storageSettings?.s3?.bucket || '');
-	let s3Region = $state(data.storageSettings?.s3?.region || 'us-east-1');
+	let storageType = $state(initialStorageSettings?.type || 'local');
+	let s3Endpoint = $state(initialStorageSettings?.s3?.endpoint || '');
+	let s3AccessKey = $state(initialStorageSettings?.s3?.accessKey || '');
+	let s3SecretKey = $state(initialStorageSettings?.s3?.secretKey || '');
+	let s3Bucket = $state(initialStorageSettings?.s3?.bucket || '');
+	let s3Region = $state(initialStorageSettings?.s3?.region || 'us-east-1');
 	let isSyncing = $state(false);
 
 	async function saveStorageConfig() {
@@ -736,8 +739,9 @@
 			} else {
 				triggerToast('Đồng bộ tệp lên S3 thất bại', 'error');
 			}
-		} catch (e: any) {
-			triggerToast(`Lỗi: ${e.message || 'Đồng bộ thất bại'}`, 'error');
+		} catch (e) {
+			const err = e as Error;
+			triggerToast(`Lỗi: ${err.message || 'Đồng bộ thất bại'}`, 'error');
 		} finally {
 			isSyncing = false;
 		}
