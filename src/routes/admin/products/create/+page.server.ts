@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { db } from '$lib/server/db/client';
-import { categories, tags, products, productTags, productVersions } from '$lib/server/db/schema';
+import { categories, tags, products, productTags, productCategories, productVersions } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { requirePermission } from '$lib/server/auth/guards';
 import { saveFile } from '$lib/server/storage/upload';
@@ -27,15 +27,21 @@ export const load: PageServerLoad = async (event) => {
 
 export const actions: Actions = {
 	create: async (event) => {
+		if (!event.locals.user) {
+			throw redirect(302, '/auth?mode=login');
+		}
 		requirePermission(event, 'tools:create');
-		const orgId = event.locals.user!.organizationId!;
-		const userId = event.locals.user!.id;
+
+		const orgId = event.locals.user.organizationId!;
+		const userId = event.locals.user.id;
+
 		const data = await event.request.formData();
 
 		// Basic Fields
 		const name = data.get('name') as string;
 		let slug = data.get('slug') as string;
-		const categoryId = data.get('categoryId') as string || null;
+		const categoryIds = data.getAll('categoryIds') as string[];
+		const categoryId = categoryIds[0] || null;
 		const description = data.get('description') as string;
 		const detailedDescription = data.get('detailedDescription') as string;
 		const icon = data.get('icon') as string || 'icon-[lucide--package]';
@@ -97,6 +103,28 @@ export const actions: Actions = {
 				}
 			}
 
+			// Parse Toggles
+			const enableSlideshow = data.get('enableSlideshow') === 'true';
+			const enableGuides = data.get('enableGuides') === 'true';
+			const enableFaqs = data.get('enableFaqs') === 'true';
+
+			// Parse Guides & FAQs
+			const guidesJson = data.get('guidesJson') as string;
+			let guides = [];
+			if (guidesJson) {
+				try {
+					guides = JSON.parse(guidesJson);
+				} catch (e) {}
+			}
+
+			const faqsJson = data.get('faqsJson') as string;
+			let faqs = [];
+			if (faqsJson) {
+				try {
+					faqs = JSON.parse(faqsJson);
+				} catch (e) {}
+			}
+
 			// File Upload details (initial version details if enableDownload is active)
 			let downloadUrl = '';
 			let fileSize = '';
@@ -139,6 +167,11 @@ export const actions: Actions = {
 					slideshowImages: slideshowUrls,
 					customFields,
 					enableDownload,
+					enableSlideshow,
+					enableGuides,
+					enableFaqs,
+					guides,
+					faqs,
 					createdBy: userId
 				})
 				.returning();
@@ -149,6 +182,14 @@ export const actions: Actions = {
 				await db.insert(productTags).values({
 					productId: seededProd.id,
 					tagId: tagId
+				});
+			}
+
+			// Associate selected categories
+			for (const catId of categoryIds) {
+				await db.insert(productCategories).values({
+					productId: seededProd.id,
+					categoryId: catId
 				});
 			}
 

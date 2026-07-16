@@ -1,7 +1,7 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db/client';
-import { products, categories, tags, productTags, productVersions } from '$lib/server/db/schema';
+import { products, categories, tags, productTags, productCategories, productVersions } from '$lib/server/db/schema';
 import { eq, or } from 'drizzle-orm';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -32,6 +32,9 @@ export const load: PageServerLoad = async ({ params }) => {
 			guides: products.guides,
 			faqs: products.faqs,
 			enableDownload: products.enableDownload,
+			enableSlideshow: products.enableSlideshow,
+			enableGuides: products.enableGuides,
+			enableFaqs: products.enableFaqs,
 			createdAt: products.createdAt,
 			updatedAt: products.updatedAt
 		})
@@ -43,15 +46,22 @@ export const load: PageServerLoad = async ({ params }) => {
 		throw redirect(302, '/');
 	}
 
-	// Fetch category name
-	let categoryName = '';
-	if (product.categoryId) {
+	// Fetch category names
+	const dbProductCategories = await db
+		.select({ categoryName: categories.name })
+		.from(productCategories)
+		.innerJoin(categories, eq(productCategories.categoryId, categories.id))
+		.where(eq(productCategories.productId, product.id));
+
+	let categoryNames = dbProductCategories.map((c) => c.categoryName);
+	if (categoryNames.length === 0 && product.categoryId) {
+		// Fallback to legacy single categoryId link
 		const [cat] = await db
 			.select({ name: categories.name })
 			.from(categories)
 			.where(eq(categories.id, product.categoryId))
 			.limit(1);
-		if (cat) categoryName = cat.name;
+		if (cat) categoryNames = [cat.name];
 	}
 
 	// Fetch tags
@@ -81,7 +91,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	return {
 		product: {
 			...product,
-			category: categoryName,
+			category: categoryNames.join(', ') || 'Chưa phân loại',
 			tags: tagNames,
 			changelogs,
 			slideshowImages: (product.slideshowImages || []) as string[],

@@ -37,11 +37,26 @@
 
 	// Get active tab from URL search parameters to sync layout links
 	let currentTab = $derived(page.url.searchParams.get('tab') || 'overview');
+	let currentPath = $derived(page.url.pathname);
+	let isProductsActive = $derived(
+		currentTab === 'products' ||
+		currentPath.startsWith('/admin/products') ||
+		currentPath.startsWith('/admin/categories') ||
+		currentPath.startsWith('/admin/tags')
+	);
 	let isProductMenuOpen = $state(true);
 
+	let allProdActive = $derived((currentPath === '/admin' && currentTab === 'products') || currentPath.includes('/edit'));
+	let createProdActive = $derived(currentPath === '/admin/products/create');
+	let categoriesActive = $derived(currentPath.startsWith('/admin/categories'));
+	let tagsActive = $derived(currentPath.startsWith('/admin/tags'));
+
 	function isLinkActive(item: (typeof menuItems)[0]) {
+		if (item.name === 'Sản Phẩm') {
+			return isProductsActive;
+		}
 		if (item.href === '/admin') {
-			return currentTab === 'overview';
+			return currentTab === 'overview' && currentPath === '/admin';
 		}
 		return item.href.includes(`tab=${currentTab}`);
 	}
@@ -124,25 +139,40 @@
 								<div class="flex flex-col gap-1 pl-9 pr-2 mt-1 animate-slide-in">
 									<a
 										href="/admin?tab=products"
-										class="px-3 py-2 rounded-lg text-xs font-semibold hover:bg-zinc-100 dark:hover:bg-zinc-850 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all"
+										class="px-3 py-2 text-xs font-semibold transition-all
+										{allProdActive
+											? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border-l-2 border-emerald-500 rounded-l-none pl-2.5'
+											: 'rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-850 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'}"
 									>
 										• Tất cả sản phẩm
 									</a>
+									
 									<a
 										href="/admin/products/create"
-										class="px-3 py-2 rounded-lg text-xs font-semibold hover:bg-zinc-100 dark:hover:bg-zinc-850 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all"
+										class="px-3 py-2 text-xs font-semibold transition-all
+										{createProdActive
+											? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border-l-2 border-emerald-500 rounded-l-none pl-2.5'
+											: 'rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-850 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'}"
 									>
 										• Thêm sản phẩm mới
 									</a>
+									
 									<a
 										href="/admin/categories"
-										class="px-3 py-2 rounded-lg text-xs font-semibold hover:bg-zinc-100 dark:hover:bg-zinc-855 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all"
+										class="px-3 py-2 text-xs font-semibold transition-all
+										{categoriesActive
+											? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border-l-2 border-emerald-500 rounded-l-none pl-2.5'
+											: 'rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-855 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'}"
 									>
 										• Danh mục
 									</a>
+									
 									<a
 										href="/admin/tags"
-										class="px-3 py-2 rounded-lg text-xs font-semibold hover:bg-zinc-100 dark:hover:bg-zinc-855 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition-all"
+										class="px-3 py-2 text-xs font-semibold transition-all
+										{tagsActive
+											? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border-l-2 border-emerald-500 rounded-l-none pl-2.5'
+											: 'rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-855 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'}"
 									>
 										• Thẻ tag
 									</a>

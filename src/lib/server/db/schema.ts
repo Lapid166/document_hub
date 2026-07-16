@@ -9,7 +9,8 @@ import {
 	uniqueIndex,
 	index,
 	integer,
-	real
+	real,
+	customType
 } from 'drizzle-orm/pg-core';
 
 // ─── Organizations ────────────────────────────────────────
@@ -185,6 +186,7 @@ export const categories = pgTable(
 		name: varchar('name', { length: 255 }).notNull(),
 		slug: varchar('slug', { length: 255 }).notNull(),
 		description: text('description'),
+		layoutType: varchar('layout_type', { length: 50 }).default('plugin_tools_game'),
 		parentId: uuid('parent_id'),
 		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow()
@@ -247,6 +249,14 @@ export const products = pgTable(
 		guides: jsonb('guides').default([]),
 		faqs: jsonb('faqs').default([]),
 		enableDownload: boolean('enable_download').default(false),
+		enableSlideshow: boolean('enable_slideshow').default(true),
+		enableGuides: boolean('enable_guides').default(true),
+		enableFaqs: boolean('enable_faqs').default(true),
+		detailedDescriptionDraft: text('detailed_description_draft'),
+		guidesDraft: jsonb('guides_draft').default([]),
+		faqsDraft: jsonb('faqs_draft').default([]),
+		customFieldsDraft: jsonb('custom_fields_draft').default({}),
+		draftStatus: varchar('draft_status', { length: 50 }).default('no_draft'),
 		createdBy: uuid('created_by')
 			.references(() => users.id, { onDelete: 'restrict' })
 			.notNull(),
@@ -276,6 +286,22 @@ export const productTags = pgTable(
 	(t) => [uniqueIndex('uq_product_tag').on(t.productId, t.tagId)]
 );
 
+// ─── Product ↔ Category Mapping ──────────────────────────
+
+export const productCategories = pgTable(
+	'product_categories',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		productId: uuid('product_id')
+			.references(() => products.id, { onDelete: 'cascade' })
+			.notNull(),
+		categoryId: uuid('category_id')
+			.references(() => categories.id, { onDelete: 'cascade' })
+			.notNull()
+	},
+	(t) => [uniqueIndex('uq_product_category_link').on(t.productId, t.categoryId)]
+);
+
 // ─── Product Versions ────────────────────────────────────
 
 export const productVersions = pgTable(
@@ -299,4 +325,60 @@ export const productVersions = pgTable(
 		updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow()
 	},
 	(t) => [index('idx_product_versions_product').on(t.productId)]
+);
+
+// ─── Custom pgvector Type Definition ────────────────────────
+
+export const pgVector = customType<{ data: number[] }>({
+	dataType() {
+		return 'vector(1536)';
+	},
+	toDriver(value: number[]): string {
+		return JSON.stringify(value);
+	},
+	fromDriver(value: unknown): number[] {
+		if (typeof value === 'string') {
+			return value.slice(1, -1).split(',').map(Number);
+		}
+		return value as number[];
+	}
+});
+
+// ─── Product Documents (Raw Uploads) ────────────────────────
+
+export const productDocuments = pgTable(
+	'product_documents',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		productId: uuid('product_id')
+			.references(() => products.id, { onDelete: 'cascade' })
+			.notNull(),
+		versionId: uuid('version_id')
+			.references(() => productVersions.id, { onDelete: 'cascade' }),
+		fileName: varchar('file_name', { length: 255 }).notNull(),
+		fileUrl: varchar('file_url', { length: 255 }).notNull(),
+		rawContent: text('raw_content').notNull(),
+		fileType: varchar('file_type', { length: 50 }).default('markdown'), // txt, md, pdf, docx
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow()
+	},
+	(t) => [index('idx_product_docs_product').on(t.productId)]
+);
+
+// ─── Product Knowledge Vectors (RAG Index) ──────────────────
+
+export const productKnowledgeVectors = pgTable(
+	'product_knowledge_vectors',
+	{
+		id: uuid('id').primaryKey().defaultRandom(),
+		productId: uuid('product_id')
+			.references(() => products.id, { onDelete: 'cascade' })
+			.notNull(),
+		versionId: uuid('version_id')
+			.references(() => productVersions.id, { onDelete: 'cascade' }),
+		content: text('content').notNull(),
+		embedding: pgVector('embedding').notNull(),
+		metadata: jsonb('metadata').default({}),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow()
+	},
+	(t) => [index('idx_product_vectors_product').on(t.productId)]
 );

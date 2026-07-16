@@ -12,13 +12,20 @@
 	let product = $derived(data.product);
 
 	// Tab states
-	const tabs = [
-		{ id: 'intro', label: 'Giới Thiệu', icon: 'icon-[lucide--info]' },
-		{ id: 'guide', label: 'Hướng Dẫn', icon: 'icon-[lucide--book-open]' },
-		{ id: 'faq', label: 'Hỏi / Đáp', icon: 'icon-[lucide--help-circle]' },
-		{ id: 'changelog', label: 'Cập Nhật', icon: 'icon-[lucide--history]' },
-		{ id: 'chatbot', label: 'Trợ Lý AI', icon: 'icon-[lucide--sparkles]' }
-	];
+	let enabledTabs = $derived.by(() => {
+		const list = [{ id: 'intro', label: 'Giới Thiệu', icon: 'icon-[lucide--info]' }];
+		if (product?.enableGuides && product.guides && (product.guides as any[]).length > 0) {
+			list.push({ id: 'guide', label: 'Hướng Dẫn', icon: 'icon-[lucide--book-open]' });
+		}
+		if (product?.enableFaqs && product.faqs && (product.faqs as any[]).length > 0) {
+			list.push({ id: 'faq', label: 'Hỏi / Đáp', icon: 'icon-[lucide--help-circle]' });
+		}
+		if (product?.enableDownload) {
+			list.push({ id: 'changelog', label: 'Cập Nhật', icon: 'icon-[lucide--history]' });
+		}
+		list.push({ id: 'chatbot', label: 'Trợ Lý AI', icon: 'icon-[lucide--sparkles]' });
+		return list;
+	});
 
 	let activeTab = $state('intro');
 
@@ -77,7 +84,7 @@
 	function syncTabWithHash() {
 		if (typeof window !== 'undefined') {
 			const hash = window.location.hash.replace('#', '');
-			const validTabIds = tabs.map((t) => t.id);
+			const validTabIds = enabledTabs.map((t) => t.id);
 			if (validTabIds.includes(hash)) {
 				activeTab = hash;
 			} else {
@@ -115,72 +122,84 @@
 		return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 	}
 
-	// AI chatbot contextual response generator
-	function handleSendMessage() {
+	// AI chatbot contextual response generator (streaming SSE RAG chatbot)
+	async function handleSendMessage() {
 		if (!chatInput.trim() || !product) return;
 
+		const userMsg = chatInput.trim();
 		const time = getFormattedTime();
-		chatMessages = [...chatMessages, { sender: 'user', text: chatInput.trim(), time }];
-		const userQuery = chatInput.trim().toLowerCase();
+		chatMessages = [...chatMessages, { sender: 'user', text: userMsg, time }];
 		chatInput = '';
 
 		chatTyping = true;
 
-		setTimeout(() => {
+		// Add an empty bot message to append stream chunks to
+		const botMessageIndex = chatMessages.length;
+		chatMessages = [...chatMessages, { sender: 'bot', text: '', time: getFormattedTime() }];
+
+		try {
+			const res = await fetch(`/api/products/${product.id}/chat`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ message: userMsg })
+			});
+
 			chatTyping = false;
-			let botReply = '';
 
-			if (
-				userQuery.includes('cài đặt') ||
-				userQuery.includes('hướng dẫn') ||
-				userQuery.includes('sử dụng')
-			) {
-				const steps = product.guides.map((g, i) => `**${g.title}**:\n${g.content}`).join('\n\n');
-				botReply = `Dưới đây là tài liệu hướng dẫn cài đặt và sử dụng cho **${product.name}**:\n\n${steps}`;
-			} else if (
-				userQuery.includes('cập nhật') ||
-				userQuery.includes('changelog') ||
-				userQuery.includes('phiên bản') ||
-				userQuery.includes('version')
-			) {
-				const logs = product.changelogs
-					.map(
-						(c) =>
-							`**Phiên bản ${c.version}** (${c.date}):\n` +
-							c.changes.map((ch) => `- ${ch}`).join('\n')
-					)
-					.join('\n\n');
-				botReply = `Dưới đây là nhật ký thay đổi và cập nhật phiên bản của **${product.name}**:\n\n${logs}`;
-			} else if (
-				userQuery.includes('tải') ||
-				userQuery.includes('download') ||
-				userQuery.includes('file')
-			) {
-				if (product.downloadUrl) {
-					botReply = `Bạn có thể tải trực tiếp file cài đặt của **${product.name}** (${product.fileSize}) bằng liên kết sau:\n\n[Tải về ${product.name}](${product.downloadUrl})`;
-				} else {
-					botReply = `Hiện tại sản phẩm **${product.name}** chưa cấu hình file tải về. Vui lòng thử lại sau.`;
-				}
-			} else {
-				// Look for matches in FAQs
-				const matchedFaq = product.faqs.find(
-					(f) =>
-						userQuery.includes(f.question.toLowerCase()) ||
-						f.question
-							.toLowerCase()
-							.split(' ')
-							.some((word) => word.length > 4 && userQuery.includes(word))
-				);
-
-				if (matchedFaq) {
-					botReply = matchedFaq.answer;
-				} else {
-					botReply = `Tôi là chatbot hỗ trợ sản phẩm **${product.name}**. Bạn có câu hỏi nào khác liên quan đến việc cài đặt, câu hỏi thường gặp hay cập nhật phiên bản của sản phẩm này không? Bạn cũng có thể xem trực tiếp các tab **Hướng Dẫn** hoặc **Hỏi/Đáp** để tự tra cứu.`;
-				}
+			if (!res.ok) {
+				const errText = await res.text();
+				chatMessages[botMessageIndex].text = 'Lỗi kết nối với máy chủ chatbot.';
+				chatMessages = [...chatMessages];
+				return;
 			}
 
-			chatMessages = [...chatMessages, { sender: 'bot', text: botReply, time }];
-		}, 1000);
+			const reader = res.body?.getReader();
+			const decoder = new TextDecoder();
+			if (!reader) {
+				chatMessages[botMessageIndex].text = 'Không thể tạo bộ đọc luồng dữ liệu.';
+				chatMessages = [...chatMessages];
+				return;
+			}
+
+			let streamText = '';
+			let buffer = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() || '';
+
+				for (const line of lines) {
+					const cleanLine = line.trim();
+					if (!cleanLine) continue;
+					if (cleanLine.startsWith('data: ')) {
+						const dataStr = cleanLine.slice(6);
+						if (dataStr === '[DONE]') {
+							break;
+						}
+						try {
+							const parsed = JSON.parse(dataStr);
+							if (parsed.text) {
+								streamText += parsed.text;
+								chatMessages[botMessageIndex].text = streamText;
+								chatMessages = [...chatMessages]; // Trigger Svelte reactivity
+							}
+						} catch (err) {
+							// Incomplete JSON
+						}
+					}
+				}
+			}
+		} catch (err) {
+			chatTyping = false;
+			chatMessages[botMessageIndex].text = 'Không thể gửi tin nhắn. Vui lòng kiểm tra kết nối mạng của bạn.';
+			chatMessages = [...chatMessages];
+		}
 	}
 
 	// Slide functions
@@ -333,7 +352,7 @@
 						<div
 							class="flex gap-2 p-1 bg-zinc-200/50 dark:bg-zinc-900/60 border border-zinc-200/30 dark:border-zinc-800/60 rounded-2xl w-full max-w-max shrink-0"
 						>
-							{#each tabs as tab}
+							{#each enabledTabs as tab}
 								<button
 									id={`tab-btn-${tab.id}`}
 									onclick={() => handleTabClick(tab.id)}
@@ -355,71 +374,73 @@
 						<!-- TAB 1: INTRO (Stacked layout: Slideshow top, description bottom) -->
 						{#if activeTab === 'intro'}
 							<div class="flex flex-col gap-6 w-full">
-								<!-- Slideshow container -->
-								<div class="flex flex-col gap-4 w-full">
-									<div
-										class="relative overflow-hidden rounded-2xl border border-zinc-200/30 dark:border-zinc-800/80 bg-zinc-100 dark:bg-zinc-900 aspect-video group shadow-xs flex items-center justify-center w-full flex-grow"
-									>
-										<!-- Main Image Triggering zoom -->
-										<button
-											onclick={() => (isZoomOpen = true)}
-											class="w-full h-full cursor-zoom-in flex items-center justify-center"
-											aria-label="Zoom image"
-										>
-											<img
-												src={product.slideshowImages[currentSlideIndex]}
-												alt={`Demo screen ${currentSlideIndex + 1}`}
-												class="w-full h-full object-cover transition-transform duration-500"
-											/>
-										</button>
-
-										<!-- Zoom Hover indicator -->
+								{#if product.enableSlideshow && product.slideshowImages && product.slideshowImages.length > 0}
+									<!-- Slideshow container -->
+									<div class="flex flex-col gap-4 w-full">
 										<div
-											class="absolute top-3 right-3 bg-zinc-950/60 backdrop-blur-md text-white rounded-lg p-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none text-xs"
+											class="relative overflow-hidden rounded-2xl border border-zinc-200/30 dark:border-zinc-800/80 bg-zinc-100 dark:bg-zinc-900 aspect-video group shadow-xs flex items-center justify-center w-full flex-grow"
 										>
-											<span class="icon-[lucide--maximize-2] w-4 h-4"></span>
-										</div>
-
-										<!-- Direction Arrows -->
-										<button
-											onclick={prevSlide}
-											class="absolute left-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-xl bg-white/90 dark:bg-zinc-900/90 border border-zinc-200/20 dark:border-zinc-800/20 text-zinc-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-850 shadow-md md:opacity-0 md:group-hover:opacity-100 transition-opacity cursor-pointer active:scale-95"
-											aria-label="Previous Slide"
-										>
-											<span class="icon-[lucide--chevron-left] h-5 w-5"></span>
-										</button>
-										<button
-											onclick={nextSlide}
-											class="absolute right-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-xl bg-white/90 dark:bg-zinc-900/90 border border-zinc-200/20 dark:border-zinc-800/20 text-zinc-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-850 shadow-md md:opacity-0 md:group-hover:opacity-100 transition-opacity cursor-pointer active:scale-95"
-											aria-label="Next Slide"
-										>
-											<span class="icon-[lucide--chevron-right] h-5 w-5"></span>
-										</button>
-
-										<!-- Counter Badge -->
-										<div
-											class="absolute bottom-3 left-3 bg-zinc-950/60 backdrop-blur-sm text-white px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider"
-										>
-											{currentSlideIndex + 1} / {product.slideshowImages.length}
-										</div>
-									</div>
-
-									<!-- Thumbnails row -->
-									<div class="flex gap-2 overflow-x-auto pb-1 scrollbar-none shrink-0">
-										{#each product.slideshowImages as img, idx}
+											<!-- Main Image Triggering zoom -->
 											<button
-												onclick={() => (currentSlideIndex = idx)}
-												class={`h-12 w-20 sm:h-14 sm:w-24 shrink-0 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
-													currentSlideIndex === idx
-														? 'border-emerald-500 scale-[0.98]'
-														: 'border-transparent hover:border-zinc-300/50'
-												}`}
+												onclick={() => (isZoomOpen = true)}
+												class="w-full h-full cursor-zoom-in flex items-center justify-center"
+												aria-label="Zoom image"
 											>
-												<img src={img} alt="Thumb" class="w-full h-full object-cover" />
+												<img
+													src={product.slideshowImages[currentSlideIndex]}
+													alt={`Demo screen ${currentSlideIndex + 1}`}
+													class="w-full h-full object-cover transition-transform duration-500"
+												/>
 											</button>
-										{/each}
+
+											<!-- Zoom Hover indicator -->
+											<div
+												class="absolute top-3 right-3 bg-zinc-950/60 backdrop-blur-md text-white rounded-lg p-1.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none text-xs"
+											>
+												<span class="icon-[lucide--maximize-2] w-4 h-4"></span>
+											</div>
+
+											<!-- Direction Arrows -->
+											<button
+												onclick={prevSlide}
+												class="absolute left-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-xl bg-white/90 dark:bg-zinc-900/90 border border-zinc-200/20 dark:border-zinc-800/20 text-zinc-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-850 shadow-md md:opacity-0 md:group-hover:opacity-100 transition-opacity cursor-pointer active:scale-95"
+												aria-label="Previous Slide"
+											>
+												<span class="icon-[lucide--chevron-left] h-5 w-5"></span>
+											</button>
+											<button
+												onclick={nextSlide}
+												class="absolute right-3 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-xl bg-white/90 dark:bg-zinc-900/90 border border-zinc-200/20 dark:border-zinc-800/20 text-zinc-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-850 shadow-md md:opacity-0 md:group-hover:opacity-100 transition-opacity cursor-pointer active:scale-95"
+												aria-label="Next Slide"
+											>
+												<span class="icon-[lucide--chevron-right] h-5 w-5"></span>
+											</button>
+
+											<!-- Counter Badge -->
+											<div
+												class="absolute bottom-3 left-3 bg-zinc-950/60 backdrop-blur-sm text-white px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase tracking-wider"
+											>
+												{currentSlideIndex + 1} / {product.slideshowImages.length}
+											</div>
+										</div>
+
+										<!-- Thumbnails row -->
+										<div class="flex gap-2 overflow-x-auto pb-1 scrollbar-none shrink-0">
+											{#each product.slideshowImages as img, idx}
+												<button
+													onclick={() => (currentSlideIndex = idx)}
+													class={`h-12 w-20 sm:h-14 sm:w-24 shrink-0 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+														currentSlideIndex === idx
+															? 'border-emerald-500 scale-[0.98]'
+															: 'border-transparent hover:border-zinc-300/50'
+													}`}
+												>
+													<img src={img} alt="Thumb" class="w-full h-full object-cover" />
+												</button>
+											{/each}
+										</div>
 									</div>
-								</div>
+								{/if}
 
 								<!-- Detailed info card (Stacked below) -->
 								<Card

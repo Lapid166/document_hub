@@ -32,6 +32,7 @@ export const actions: Actions = {
 		const description = data.get('description') as string;
 		const parentIdStr = data.get('parentId') as string;
 		const parentId = parentIdStr && parentIdStr !== '' ? parentIdStr : null;
+		const layoutType = data.get('layoutType') as string || 'plugin_tools_game';
 
 		if (!name || name.trim() === '') {
 			return fail(400, { message: 'Tên danh mục không được để trống' });
@@ -61,6 +62,7 @@ export const actions: Actions = {
 				name,
 				slug,
 				description,
+				layoutType,
 				parentId
 			}).returning();
 
@@ -79,6 +81,7 @@ export const actions: Actions = {
 		const description = data.get('description') as string;
 		const parentIdStr = data.get('parentId') as string;
 		const parentId = parentIdStr && parentIdStr !== '' ? parentIdStr : null;
+		const layoutType = data.get('layoutType') as string || 'plugin_tools_game';
 
 		if (!id || !name || name.trim() === '') {
 			return fail(400, { message: 'Thông tin không hợp lệ' });
@@ -109,6 +112,7 @@ export const actions: Actions = {
 					name,
 					slug,
 					description,
+					layoutType,
 					parentId,
 					updatedAt: new Date()
 				})

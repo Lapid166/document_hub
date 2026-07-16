@@ -7,15 +7,24 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import Select from '$lib/components/Select.svelte';
 	import MilkdownEditor from '$lib/components/MilkdownEditor.svelte';
+	import AIModal from '$lib/components/AIModal.svelte';
+
+	import { PRODUCT_LAYOUTS } from '$lib/data/layouts';
 
 	let { data, form } = $props();
 
-	// Tabs: details vs versions
-	let currentSubTab = $state('details');
-
 	let name = $state(data.product.name);
 	let slug = $state(data.product.slug);
-	let categoryId = $state(data.product.categoryId || '');
+	let selectedCategoryIds = $state<string[]>([...data.selectedCategoryIds]);
+	let categoryId = $derived(selectedCategoryIds[0] || '');
+
+	function toggleCategory(catId: string) {
+		if (selectedCategoryIds.includes(catId)) {
+			selectedCategoryIds = selectedCategoryIds.filter((id) => id !== catId);
+		} else {
+			selectedCategoryIds = [...selectedCategoryIds, catId];
+		}
+	}
 	let description = $state(data.product.description || '');
 	let detailedDescription = $state(data.product.detailedDescription || '');
 	let icon = $state(data.product.icon || 'icon-[lucide--package]');
@@ -27,6 +36,107 @@
 	let author = $state(data.product.author || '');
 
 	let enableDownload = $state(data.product.enableDownload || false);
+
+	// Toggles
+	let enableSlideshow = $state(data.product.enableSlideshow ?? true);
+	let enableGuides = $state(data.product.enableGuides ?? true);
+	let enableFaqs = $state(data.product.enableFaqs ?? true);
+
+	// Left column tab control
+	let activeTab = $state('basic');
+
+	// Fallback mechanism when tabs are toggled off
+	$effect(() => {
+		if (activeTab === 'slideshow' && !enableSlideshow) {
+			activeTab = 'basic';
+		}
+		if (activeTab === 'guides' && !enableGuides) {
+			activeTab = 'basic';
+		}
+		if (activeTab === 'faqs' && !enableFaqs) {
+			activeTab = 'basic';
+		}
+		if (activeTab === 'versions' && !enableDownload) {
+			activeTab = 'basic';
+		}
+	});
+
+	// AI Modal State
+	let aiModalOpen = $state(false);
+	let aiModalField = $state<'detailedDescription' | 'guides' | 'faqs' | 'changelog'>('detailedDescription');
+
+	function openAIModal(field: typeof aiModalField) {
+		aiModalField = field;
+		aiModalOpen = true;
+	}
+
+	function handleAIApply(generatedContent: string, mode: 'replace' | 'append') {
+		if (aiModalField === 'detailedDescription') {
+			if (mode === 'replace') {
+				detailedDescription = generatedContent;
+			} else {
+				detailedDescription = (detailedDescription ? detailedDescription + '\n\n' : '') + generatedContent;
+			}
+		} else if (aiModalField === 'guides') {
+			try {
+				const parsed = JSON.parse(generatedContent);
+				if (Array.isArray(parsed)) {
+					if (mode === 'replace') {
+						guidesList = parsed;
+					} else {
+						guidesList = [...guidesList, ...parsed];
+					}
+				}
+			} catch (e) {
+				console.error('Failed to parse AI guides:', e);
+			}
+		} else if (aiModalField === 'faqs') {
+			try {
+				const parsed = JSON.parse(generatedContent);
+				if (Array.isArray(parsed)) {
+					if (mode === 'replace') {
+						faqsList = parsed;
+					} else {
+						faqsList = [...faqsList, ...parsed];
+					}
+				}
+			} catch (e) {
+				console.error('Failed to parse AI faqs:', e);
+			}
+		} else if (aiModalField === 'changelog') {
+			if (mode === 'replace') {
+				newChangelogRaw = generatedContent;
+			} else {
+				newChangelogRaw = (newChangelogRaw ? newChangelogRaw + '\n' : '') + generatedContent;
+			}
+		}
+	}
+
+	// Guides state
+	let guidesList = $state<{ title: string; content: string }[]>((data.product.guides as any) || []);
+	function addGuideStep() {
+		guidesList = [...guidesList, { title: '', content: '' }];
+	}
+	function removeGuideStep(index: number) {
+		guidesList = guidesList.filter((_, i) => i !== index);
+	}
+	let guidesJson = $derived(JSON.stringify(guidesList));
+
+	// FAQs state
+	let faqsList = $state<{ question: string; answer: string }[]>((data.product.faqs as any) || []);
+	function addFaqItem() {
+		faqsList = [...faqsList, { question: '', answer: '' }];
+	}
+	function removeFaqItem(index: number) {
+		faqsList = faqsList.filter((_, i) => i !== index);
+	}
+	let faqsJson = $derived(JSON.stringify(faqsList));
+
+	// Find active layout config based on selected categoryId
+	let activeLayout = $derived.by(() => {
+		const cat = data.categories.find((c: any) => c.id === categoryId);
+		return PRODUCT_LAYOUTS[cat?.layoutType || 'other'] || PRODUCT_LAYOUTS.other;
+	});
 
 	// Selected tags
 	let selectedTagIds = $state<string[]>([...data.selectedTagIds]);
@@ -98,7 +208,7 @@
 					
 					if (insertedCat) {
 						data.categories = [...data.categories, insertedCat];
-						categoryId = insertedCat.id;
+						selectedCategoryIds = [...selectedCategoryIds, insertedCat.id];
 						quickCategoryName = '';
 						showQuickCategory = false;
 					} else {
@@ -222,170 +332,458 @@
 	<div
 		class="relative rounded-3xl border border-zinc-200/50 bg-white/60 p-6 backdrop-blur-xl dark:border-zinc-800/80 dark:bg-zinc-900/60 shadow-sm"
 	>
-		<div class="flex items-center justify-between gap-4">
-			<div class="flex items-center gap-3">
-				<a
-					href="/admin?tab=products"
-					class="p-2 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-zinc-500 zen-transition"
-					title="Quay lại"
-				>
-					<span class="icon-[lucide--arrow-left] h-5 w-5"></span>
-				</a>
-				<div>
-					<h1 class="text-xl font-bold text-zinc-900 dark:text-white tracking-tight flex items-center gap-2">
-						Sửa: {data.product.name}
-						<Badge variant="success" class="text-[10px] font-bold">
-							{data.product.wpVersion ? 'WordPress' : 'Standalone'}
-						</Badge>
-					</h1>
-					<p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-						Cập nhật cấu hình sản phẩm, sửa đổi slideshow showcase, và tạo phiên bản cập nhật tải về.
-					</p>
-				</div>
-			</div>
-
-			<!-- Sub Tab Controls -->
-			<div class="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800/60 p-1 rounded-2xl">
-				<button
-					onclick={() => (currentSubTab = 'details')}
-					class="px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 cursor-pointer
-					{currentSubTab === 'details' ? 'bg-white dark:bg-zinc-900 shadow-sm text-zinc-900 dark:text-white' : 'text-zinc-450 hover:text-zinc-700 dark:hover:text-zinc-300'}"
-				>
-					Thông Tin
-				</button>
-				{#if enableDownload}
-					<button
-						onclick={() => (currentSubTab = 'versions')}
-						class="px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 cursor-pointer
-						{currentSubTab === 'versions' ? 'bg-white dark:bg-zinc-900 shadow-sm text-zinc-900 dark:text-white' : 'text-zinc-450 hover:text-zinc-700 dark:hover:text-zinc-300'}"
-					>
-						Phiên Bản ({data.versions.length})
-					</button>
-				{/if}
+		<div class="flex items-center gap-3">
+			<a
+				href="/admin?tab=products"
+				class="p-2 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/60 text-zinc-500 zen-transition"
+				title="Quay lại"
+			>
+				<span class="icon-[lucide--arrow-left] h-5 w-5"></span>
+			</a>
+			<div>
+				<h1 class="text-xl font-bold text-zinc-900 dark:text-white tracking-tight flex items-center gap-2">
+					Sửa: {data.product.name}
+					<Badge variant="success" class="text-[10px] font-bold">
+						{data.product.wpVersion ? 'WordPress' : 'Standalone'}
+					</Badge>
+				</h1>
+				<p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+					Cập nhật cấu hình sản phẩm, sửa đổi slideshow showcase, và tạo phiên bản cập nhật tải về.
+				</p>
 			</div>
 		</div>
 	</div>
 
-	<!-- TAB 1: PRODUCT DETAILS -->
-	{#if currentSubTab === 'details'}
-		<form method="POST" action="?/update" enctype="multipart/form-data" use:enhance>
-			<!-- Hidden helper inputs -->
-			<input type="hidden" name="customFieldsJson" value={customFieldsJson} />
-			<input type="hidden" name="enableDownload" value={enableDownload.toString()} />
-			{#each selectedTagIds as tagId}
-				<input type="hidden" name="tagIds" value={tagId} />
-			{/each}
+	<!-- Main Form -->
+	<form method="POST" action="?/update" enctype="multipart/form-data" use:enhance>
+		<!-- Hidden helper inputs -->
+		<input type="hidden" name="customFieldsJson" value={customFieldsJson} />
+		<input type="hidden" name="enableDownload" value={enableDownload.toString()} />
+		<input type="hidden" name="enableSlideshow" value={enableSlideshow.toString()} />
+		<input type="hidden" name="enableGuides" value={enableGuides.toString()} />
+		<input type="hidden" name="enableFaqs" value={enableFaqs.toString()} />
+		<input type="hidden" name="guidesJson" value={guidesJson} />
+		<input type="hidden" name="faqsJson" value={faqsJson} />
+		{#each selectedTagIds as tagId}
+			<input type="hidden" name="tagIds" value={tagId} />
+		{/each}
+		{#each selectedCategoryIds as catId}
+			<input type="hidden" name="categoryIds" value={catId} />
+		{/each}
 
-			<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-				<!-- Left columns (col-span-8) -->
-				<div class="lg:col-span-8 flex flex-col gap-6">
-					<!-- Basic Specs -->
-					<Card hover={false} span="flex flex-col gap-4 p-6">
-						<h3 class="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
-							Cấu Hình Cơ Bản
-						</h3>
+		<div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+			<!-- Left column: Dynamic Tabs Content (col-span-8) -->
+			<div class="lg:col-span-8 flex flex-col gap-6">
+				<!-- Premium Tab Track Container -->
+				<div class="flex flex-wrap gap-1.5 bg-zinc-100/80 dark:bg-zinc-800/40 p-1.5 rounded-2xl border border-zinc-200/50 dark:border-zinc-800/60 backdrop-blur-md">
+					<button
+						type="button"
+						onclick={() => activeTab = 'basic'}
+						class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ease-out cursor-pointer
+						{activeTab === 'basic'
+							? 'bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 shadow-sm border border-zinc-200/40 dark:border-zinc-800/50 scale-[1.02]'
+							: 'text-zinc-450 hover:bg-white/40 dark:hover:bg-zinc-800/20 hover:text-zinc-855 dark:hover:text-white'}"
+					>
+						<span class="icon-[lucide--info] w-4 h-4 text-emerald-500"></span>
+						<span>Thông tin cơ bản</span>
+					</button>
 
-						<div class="flex flex-col gap-1">
-							<label for="prod-name" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
-								>Tên sản phẩm <span class="text-rose-500">*</span></label
-							>
-							<Input id="prod-name" name="name" bind:value={name} required />
-						</div>
+					{#if enableSlideshow}
+						<button
+							type="button"
+							onclick={() => activeTab = 'slideshow'}
+							class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ease-out cursor-pointer
+							{activeTab === 'slideshow'
+								? 'bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 shadow-sm border border-zinc-200/40 dark:border-zinc-800/50 scale-[1.02]'
+								: 'text-zinc-450 hover:bg-white/40 dark:hover:bg-zinc-800/20 hover:text-zinc-855 dark:hover:text-white'}"
+						>
+							<span class="icon-[lucide--image] w-4 h-4 text-sky-500"></span>
+							<span>Ảnh Showcase</span>
+						</button>
+					{/if}
 
-						<div class="flex flex-col gap-1">
-							<label for="prod-slug" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
-								>Slug Đường dẫn</label
-							>
-							<Input id="prod-slug" name="slug" bind:value={slug} required />
-						</div>
+					{#if enableGuides}
+						<button
+							type="button"
+							onclick={() => activeTab = 'guides'}
+							class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ease-out cursor-pointer
+							{activeTab === 'guides'
+								? 'bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 shadow-sm border border-zinc-200/40 dark:border-zinc-800/50 scale-[1.02]'
+								: 'text-zinc-450 hover:bg-white/40 dark:hover:bg-zinc-800/20 hover:text-zinc-855 dark:hover:text-white'}"
+						>
+							<span class="icon-[lucide--book-open] w-4 h-4 text-indigo-500"></span>
+							<span>Hướng dẫn sử dụng</span>
+						</button>
+					{/if}
 
-						<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-							<div class="flex flex-col gap-1">
-								<label for="prod-icon" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
-									>Icon</label
+					{#if enableFaqs}
+						<button
+							type="button"
+							onclick={() => activeTab = 'faqs'}
+							class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ease-out cursor-pointer
+							{activeTab === 'faqs'
+								? 'bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 shadow-sm border border-zinc-200/40 dark:border-zinc-800/50 scale-[1.02]'
+								: 'text-zinc-450 hover:bg-white/40 dark:hover:bg-zinc-800/20 hover:text-zinc-855 dark:hover:text-white'}"
+						>
+							<span class="icon-[lucide--help-circle] w-4 h-4 text-amber-500"></span>
+							<span>Hỏi đáp FAQ</span>
+						</button>
+					{/if}
+
+					{#if enableDownload}
+						<button
+							type="button"
+							onclick={() => activeTab = 'versions'}
+							class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 ease-out cursor-pointer
+							{activeTab === 'versions'
+								? 'bg-white dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 shadow-sm border border-zinc-200/40 dark:border-zinc-800/50 scale-[1.02]'
+								: 'text-zinc-450 hover:bg-white/40 dark:hover:bg-zinc-800/20 hover:text-zinc-855 dark:hover:text-white'}"
+						>
+							<span class="icon-[lucide--history] w-4 h-4 text-rose-500"></span>
+							<span>Phiên bản ({data.versions.length})</span>
+						</button>
+					{/if}
+				</div>
+
+				<!-- Tab Contents -->
+				<div class="w-full">
+					{#if activeTab === 'basic'}
+						<!-- Basic Details Card -->
+						<Card hover={false} span="flex flex-col gap-5 p-6 tab-content-panel">
+							<h3 class="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
+								Cấu hình cơ bản
+							</h3>
+
+							<div class="flex flex-col gap-1 font-sans">
+								<label for="prod-name" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
+									>Tên sản phẩm <span class="text-rose-500">*</span></label
 								>
-								<Select
-									id="prod-icon"
-									options={iconOptions}
-									bind:value={icon}
-								/>
-								<input type="hidden" name="icon" value={icon} />
+								<Input id="prod-name" name="name" bind:value={name} required />
 							</div>
 
-							<div class="flex flex-col gap-1">
-								<label for="prod-icon-color" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
-									>Màu Icon</label
+							<div class="flex flex-col gap-1 font-sans">
+								<label for="prod-slug" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
+									>Slug Đường dẫn</label
 								>
-								<Select
-									id="prod-icon-color"
-									options={iconColorOptions}
-									bind:value={iconColor}
-								/>
-								<input type="hidden" name="iconColor" value={iconColor} />
+								<Input id="prod-slug" name="slug" bind:value={slug} required />
 							</div>
-						</div>
 
-						<div class="flex flex-col gap-1">
-							<label for="prod-desc" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
-								>Mô tả ngắn</label
-							>
-							<textarea
-								id="prod-desc"
-								name="description"
-								rows="3"
-								bind:value={description}
-								class="w-full rounded-xl border border-zinc-200 bg-white/50 px-4 py-2.5 text-sm outline-none transition-all duration-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
-							></textarea>
-						</div>
+							<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+								<div class="flex flex-col gap-1 font-sans">
+									<label for="prod-icon" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
+										>Icon</label
+									>
+									<Select
+										id="prod-icon"
+										options={iconOptions}
+										bind:value={icon}
+									/>
+									<input type="hidden" name="icon" value={icon} />
+								</div>
 
-						<div class="flex flex-col gap-1">
-							<label for="prod-detailed-desc" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
-								>Mô tả chi tiết</label
-							>
-							<MilkdownEditor
-								id="prod-detailed-desc"
-								bind:value={detailedDescription}
-								placeholder="Mô tả đầy đủ, chi tiết cấu trúc hoạt động sản phẩm..."
-							/>
-							<input type="hidden" name="detailedDescription" value={detailedDescription} />
-						</div>
-					</Card>
+								<div class="flex flex-col gap-1 font-sans">
+									<label for="prod-icon-color" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
+										>Màu Icon</label
+									>
+									<Select
+										id="prod-icon-color"
+										options={iconColorOptions}
+										bind:value={iconColor}
+									/>
+									<input type="hidden" name="iconColor" value={iconColor} />
+								</div>
+							</div>
 
-					<!-- Media Showcase Slideshow Card -->
-					<Card hover={false} span="flex flex-col gap-4 p-6">
-						<h3 class="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
-							 Showcase Images & Slideshow
-						</h3>
+							<div class="flex flex-col gap-1 font-sans">
+								<label for="prod-desc" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
+									>Mô tả ngắn</label
+								>
+								<textarea
+									id="prod-desc"
+									name="description"
+									rows="3"
+									bind:value={description}
+									class="w-full rounded-xl border border-zinc-200 bg-white/50 px-4 py-2.5 text-sm outline-none transition-all duration-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
+								></textarea>
+							</div>
 
-						<!-- Existing Slideshow Images list -->
-						{#if data.product.slideshowImages && data.product.slideshowImages.length > 0}
-							<div class="flex items-center gap-3 overflow-x-auto py-1">
-								{#each data.product.slideshowImages as image}
-									<div class="relative h-20 w-32 border border-zinc-200 dark:border-zinc-850 rounded-xl overflow-hidden shrink-0 shadow-sm">
-										<img src={image} alt="slideshow" class="h-full w-full object-cover" />
+							<div class="flex flex-col gap-1.5">
+								<div class="flex items-center justify-between">
+									<label for="prod-detailed-desc" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
+										>Mô tả chi tiết</label
+									>
+									<button
+										type="button"
+										onclick={() => openAIModal('detailedDescription')}
+										class="flex items-center gap-1 text-[11px] text-emerald-500 hover:text-emerald-600 transition-colors font-bold cursor-pointer"
+									>
+										<span class="icon-[lucide--sparkles] w-3.5 h-3.5"></span>
+										Viết bằng AI
+									</button>
+								</div>
+								<MilkdownEditor
+									id="prod-detailed-desc"
+									bind:value={detailedDescription}
+									placeholder="Mô tả đầy đủ, chi tiết cấu trúc hoạt động sản phẩm..."
+								/>
+								<input type="hidden" name="detailedDescription" value={detailedDescription} />
+							</div>
+						</Card>
+					{/if}
+
+					{#if activeTab === 'slideshow' && enableSlideshow}
+						<!-- Slideshow Card -->
+						<Card hover={false} span="flex flex-col gap-4 p-6 tab-content-panel">
+							<h3 class="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
+								 Showcase Images & Slideshow
+							</h3>
+
+							<!-- Existing Slideshow Images list -->
+							{#if data.product.slideshowImages && data.product.slideshowImages.length > 0}
+								<div class="flex items-center gap-3 overflow-x-auto py-1">
+									{#each data.product.slideshowImages as image}
+										<div class="relative h-20 w-32 border border-zinc-200 dark:border-zinc-850 rounded-xl overflow-hidden shrink-0 shadow-sm animate-none">
+											<img src={image} alt="slideshow" class="h-full w-full object-cover" />
+										</div>
+									{/each}
+								</div>
+							{/if}
+
+							<div class="flex flex-col gap-1 font-sans">
+								<label for="slideshow-files" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
+									>Thay thế ảnh Slideshow (Tùy chọn)</label
+								>
+								<input
+									type="file"
+									id="slideshow-files"
+									name="slideshowFiles"
+									multiple
+									accept="image/*"
+									class="w-full pl-1 text-sm text-zinc-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-500/10 file:text-emerald-600 hover:file:bg-emerald-500/20 dark:file:bg-emerald-500/10 dark:file:text-emerald-400 cursor-pointer"
+								/>
+								<span class="text-[10px] text-zinc-450 dark:text-zinc-500"
+									>Tải lên ảnh mới sẽ thay thế hoàn toàn bộ ảnh cũ hiện tại của slideshow.</span
+								>
+							</div>
+						</Card>
+					{/if}
+
+					{#if activeTab === 'guides' && enableGuides}
+						<!-- Guides Card -->
+						<Card hover={false} span="flex flex-col gap-4 p-6 tab-content-panel">
+							<div class="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
+								<h3 class="text-sm font-bold text-zinc-900 dark:text-white flex items-center gap-3">
+									<span>Hướng Dẫn Sử Dụng (Guides)</span>
+									<button
+										type="button"
+										onclick={() => openAIModal('guides')}
+										class="flex items-center gap-1 text-[11px] text-emerald-500 hover:text-emerald-600 transition-colors font-bold cursor-pointer"
+									>
+										<span class="icon-[lucide--sparkles] w-3.5 h-3.5"></span>
+										Cập nhật / Tạo từ Tài liệu bằng AI
+									</button>
+								</h3>
+								<Button type="button" variant="secondary" size="sm" onclick={addGuideStep}>
+									+ Thêm Bước
+								</Button>
+							</div>
+
+							<div class="flex flex-col gap-4">
+								{#if guidesList.length === 0}
+									<div class="text-xs text-zinc-400 text-center py-4">
+										Chưa có bước hướng dẫn nào. Hãy tạo thêm hoặc sử dụng Trợ lý AI.
 									</div>
-								{/each}
+								{:else}
+									{#each guidesList as step, index}
+										<div class="flex flex-col gap-2 p-3 bg-zinc-50/50 dark:bg-zinc-800/20 border border-zinc-200/50 dark:border-zinc-850 rounded-xl relative animate-slide-in">
+											<button
+												type="button"
+												onclick={() => removeGuideStep(index)}
+												class="absolute top-2 right-2 text-zinc-400 hover:text-rose-500 transition-colors cursor-pointer"
+												title="Xóa bước này"
+											>
+												<span class="icon-[lucide--trash-2] h-4 w-4"></span>
+											</button>
+
+											<div class="flex flex-col gap-1 pr-6 font-sans">
+												<label for="guide-title-{index}" class="text-[11px] font-bold text-zinc-500">Tiêu đề bước {index + 1}</label>
+												<Input id="guide-title-{index}" placeholder="Ví dụ: Bước 1: Khởi tạo" bind:value={step.title} required />
+											</div>
+
+											<div class="flex flex-col gap-1 font-sans">
+												<label for="guide-content-{index}" class="text-[11px] font-bold text-zinc-500">Nội dung hướng dẫn</label>
+												<textarea
+													id="guide-content-{index}"
+													rows="3"
+													placeholder="Nội dung chi tiết..."
+													bind:value={step.content}
+													required
+													class="w-full rounded-xl border border-zinc-200 bg-white/50 px-4 py-2.5 text-sm outline-none transition-all duration-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
+												></textarea>
+											</div>
+										</div>
+									{/each}
+								{/if}
 							</div>
-						{/if}
+						</Card>
+					{/if}
 
-						<div class="flex flex-col gap-1">
-							<label for="slideshow-files" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
-								>Thay thế ảnh Slideshow (Tùy chọn)</label
-							>
-							<input
-								type="file"
-								id="slideshow-files"
-								name="slideshowFiles"
-								multiple
-								accept="image/*"
-								class="w-full pl-1 text-sm text-zinc-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-500/10 file:text-emerald-600 hover:file:bg-emerald-500/20 dark:file:bg-emerald-500/10 dark:file:text-emerald-400 cursor-pointer"
-							/>
-							<span class="text-[10px] text-zinc-450 dark:text-zinc-500"
-								>Tải lên ảnh mới sẽ thay thế hoàn toàn bộ ảnh cũ hiện tại của slideshow.</span
-							>
-						</div>
-					</Card>
+					{#if activeTab === 'faqs' && enableFaqs}
+						<!-- FAQs Card -->
+						<Card hover={false} span="flex flex-col gap-4 p-6 tab-content-panel">
+							<div class="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
+								<h3 class="text-sm font-bold text-zinc-900 dark:text-white flex items-center gap-3">
+									<span>Câu Hỏi Thường Gặp (FAQs)</span>
+									<button
+										type="button"
+										onclick={() => openAIModal('faqs')}
+										class="flex items-center gap-1 text-[11px] text-emerald-500 hover:text-emerald-600 transition-colors font-bold cursor-pointer"
+									>
+										<span class="icon-[lucide--sparkles] w-3.5 h-3.5"></span>
+										Cập nhật / Tạo Q&A bằng AI
+									</button>
+								</h3>
+								<Button type="button" variant="secondary" size="sm" onclick={addFaqItem}>
+									+ Thêm Câu Hỏi
+								</Button>
+							</div>
 
+							<div class="flex flex-col gap-4 font-sans">
+								{#if faqsList.length === 0}
+									<div class="text-xs text-zinc-400 text-center py-4">
+										Chưa có FAQ nào được tạo.
+									</div>
+								{:else}
+									{#each faqsList as item, index}
+										<div class="flex flex-col gap-2 p-3 bg-zinc-50/50 dark:bg-zinc-800/20 border border-zinc-200/50 dark:border-zinc-850 rounded-xl relative animate-slide-in">
+											<button
+												type="button"
+												onclick={() => removeFaqItem(index)}
+												class="absolute top-2 right-2 text-zinc-400 hover:text-rose-500 transition-colors cursor-pointer"
+												title="Xóa câu hỏi này"
+											>
+												<span class="icon-[lucide--trash-2] h-4 w-4"></span>
+											</button>
+
+											<div class="flex flex-col gap-1 pr-6 font-sans">
+												<label for="faq-q-{index}" class="text-[11px] font-bold text-zinc-500">Câu hỏi {index + 1}</label>
+												<Input id="faq-q-{index}" placeholder="Câu hỏi thường gặp..." bind:value={item.question} required />
+											</div>
+
+											<div class="flex flex-col gap-1 font-sans">
+												<label for="faq-a-{index}" class="text-[11px] font-bold text-zinc-500">Câu trả lời</label>
+												<textarea
+													id="faq-a-{index}"
+													rows="3"
+													placeholder="Câu trả lời cụ thể..."
+													bind:value={item.answer}
+													required
+													class="w-full rounded-xl border border-zinc-200 bg-white/50 px-4 py-2.5 text-sm outline-none transition-all duration-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
+												></textarea>
+											</div>
+										</div>
+									{/each}
+								{/if}
+							</div>
+						</Card>
+					{/if}
+
+					{#if activeTab === 'versions' && enableDownload}
+						<!-- Versions List Card -->
+						<Card hover={false} span="flex flex-col gap-4 p-6 tab-content-panel">
+							<div class="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
+								<h3 class="text-sm font-bold text-zinc-900 dark:text-white">
+									Danh Sách Phiên Bản Tải Về
+								</h3>
+								<Button type="button" variant="primary" size="sm" onclick={openVersionModal} class="cursor-pointer">
+									+ Tải Lên Phiên Bản Mới
+								</Button>
+							</div>
+
+							<div class="overflow-x-auto w-full">
+								<table class="w-full border-collapse text-left text-sm text-zinc-600 dark:text-zinc-300">
+									<thead>
+										<tr class="border-b border-zinc-200/50 dark:border-zinc-800/65">
+											<th class="pb-3 font-bold text-zinc-900 dark:text-white">Phiên bản</th>
+											<th class="pb-3 font-bold text-zinc-900 dark:text-white">Kích thước</th>
+											<th class="pb-3 font-bold text-zinc-900 dark:text-white">Kiểu file</th>
+											<th class="pb-3 font-bold text-zinc-900 dark:text-white">Ngày tạo</th>
+											<th class="pb-3 font-bold text-zinc-900 dark:text-white">Trạng thái</th>
+											<th class="pb-3 font-bold text-zinc-900 dark:text-white text-right">Hành động</th>
+										</tr>
+									</thead>
+									<tbody class="divide-y divide-zinc-200/30 dark:divide-zinc-800/40">
+										{#if data.versions.length === 0}
+											<tr>
+												<td colspan="6" class="py-6 text-center text-zinc-400">
+													Chưa có phiên bản nào cho sản phẩm này. Hãy tải lên phiên bản đầu tiên.
+												</td>
+											</tr>
+										{:else}
+											{#each data.versions.sort((a, b) => new Date(b.createdAt ?? '').getTime() - new Date(a.createdAt ?? '').getTime()) as version}
+												<tr class="group hover:bg-zinc-50/40 dark:hover:bg-zinc-800/10">
+													<td class="py-3.5 font-bold text-zinc-900 dark:text-white flex items-center gap-2">
+														{version.versionNumber}
+														{#if version.isCurrentActive}
+															<Badge variant="success" class="text-[9px] py-0.5 px-1.5">Active</Badge>
+														{/if}
+													</td>
+													<td class="py-3.5 text-xs font-mono">{version.fileSize || '—'}</td>
+													<td class="py-3.5 text-xs text-zinc-450">{version.fileType || '—'}</td>
+													<td class="py-3.5 text-xs text-zinc-500">
+														{new Date(version.createdAt ?? '').toLocaleDateString('vi-VN')}
+													</td>
+													<td class="py-3.5 text-xs">
+														{#if version.isCurrentActive}
+															<span class="text-emerald-500 font-bold">Hiện hành</span>
+														{:else}
+															<span class="text-zinc-400">Lưu trữ</span>
+														{/if}
+													</td>
+													<td class="py-3.5 text-right">
+														<div class="flex items-center justify-end gap-2 font-sans">
+															{#if !version.isCurrentActive}
+																<form method="POST" action="?/setActiveVersion" use:enhance>
+																	<input type="hidden" name="versionId" value={version.id} />
+																	<Button type="submit" variant="secondary" size="sm" class="cursor-pointer">
+																		Kích hoạt
+																	</Button>
+																</form>
+															{/if}
+
+															<form method="POST" action="?/deleteVersion" use:enhance>
+																<input type="hidden" name="versionId" value={version.id} />
+																<button
+																	type="submit"
+																	onclick={(e) => {
+																		if (
+																			!confirm(
+																				`Bạn có chắc muốn xóa phiên bản "${version.versionNumber}"?`
+																			)
+																		) {
+																			e.preventDefault();
+																		}
+																	}}
+																	class="p-1.5 text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all cursor-pointer"
+																	title="Xóa phiên bản"
+																>
+																	<span class="icon-[lucide--trash-2] h-4 w-4"></span>
+																</button>
+															</form>
+														</div>
+													</td>
+												</tr>
+											{/each}
+										{/if}
+									</tbody>
+								</table>
+							</div>
+						</Card>
+					{/if}
+				</div>
+
+				<!-- Technical specifications & custom fields are always listed in the left column below the active tab content -->
+				{#if activeLayout.showWpPhpSpecs || activeLayout.showDemoUrl}
 					<!-- Tech specs -->
 					<Card hover={false} span="flex flex-col gap-4 p-6">
 						<h3 class="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
@@ -393,28 +791,32 @@
 						</h3>
 
 						<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-							<div class="flex flex-col gap-1">
-								<label for="spec-wp" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
-									>Yêu cầu WordPress</label
-								>
-								<Input id="spec-wp" name="wpVersion" bind:value={wpVersion} />
-							</div>
+							{#if activeLayout.showWpPhpSpecs}
+								<div class="flex flex-col gap-1 animate-slide-in font-sans">
+									<label for="spec-wp" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
+										>Yêu cầu WordPress</label
+									>
+									<Input id="spec-wp" name="wpVersion" bind:value={wpVersion} />
+								</div>
 
-							<div class="flex flex-col gap-1">
-								<label for="spec-php" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
-									>Yêu cầu PHP</label
-								>
-								<Input id="spec-php" name="phpVersion" bind:value={phpVersion} />
-							</div>
+								<div class="flex flex-col gap-1 animate-slide-in font-sans">
+									<label for="spec-php" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
+										>Yêu cầu PHP</label
+									>
+									<Input id="spec-php" name="phpVersion" bind:value={phpVersion} />
+								</div>
+							{/if}
 
-							<div class="flex flex-col gap-1">
-								<label for="spec-demo" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
-									>Live Demo URL</label
-								>
-								<Input id="spec-demo" name="liveDemoUrl" bind:value={liveDemoUrl} />
-							</div>
+							{#if activeLayout.showDemoUrl}
+								<div class="flex flex-col gap-1 animate-slide-in font-sans">
+									<label for="spec-demo" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
+										>Live Demo URL</label
+									>
+									<Input id="spec-demo" name="liveDemoUrl" bind:value={liveDemoUrl} />
+								</div>
+							{/if}
 
-							<div class="flex flex-col gap-1">
+							<div class="flex flex-col gap-1 font-sans">
 								<label for="spec-auth" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
 									>Tác giả (Author)</label
 								>
@@ -422,67 +824,180 @@
 							</div>
 						</div>
 					</Card>
+				{/if}
 
-					<!-- Custom fields -->
-					<Card hover={false} span="flex flex-col gap-4 p-6">
-						<div class="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
-							<h3 class="text-sm font-bold text-zinc-900 dark:text-white">
-								Trường Thông Tin Tùy Biến (Custom Fields)
-							</h3>
-							<Button type="button" variant="secondary" size="sm" onclick={addCustomField}>
-								+ Thêm Trường
-							</Button>
-						</div>
+				<!-- Custom Fields -->
+				<Card hover={false} span="flex flex-col gap-4 p-6">
+					<div class="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800/60 pb-2 font-sans">
+						<h3 class="text-sm font-bold text-zinc-900 dark:text-white">
+							Trường Thông Tin Tùy Biến (Custom Fields)
+						</h3>
+						<Button type="button" variant="secondary" size="sm" onclick={addCustomField}>
+							+ Thêm Trường
+						</Button>
+					</div>
 
-						<div class="flex flex-col gap-3">
-							{#if customFields.length === 0}
-								<div class="text-xs text-center text-zinc-400 py-2">
-									Chưa có trường tùy biến nào.
-								</div>
-							{:else}
-								{#each customFields as field, index}
-									<div class="flex items-center gap-3 animate-slide-in">
-										<div class="flex-grow grid grid-cols-2 gap-3">
-											<Input
-												id="custom-field-key-{index}"
-												placeholder="Tên trường (ví dụ: License)"
-												bind:value={field.key}
-												required
-											/>
-											<Input
-												id="custom-field-val-{index}"
-												placeholder="Giá trị (ví dụ: GPLv3)"
-												bind:value={field.value}
-												required
-											/>
-										</div>
-										<button
-											type="button"
-											onclick={() => removeCustomField(index)}
-											class="p-2.5 text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all cursor-pointer"
-											title="Xóa trường"
-										>
-											<span class="icon-[lucide--x] h-4.5 w-4.5"></span>
-										</button>
+					<div class="flex flex-col gap-3 font-sans">
+						{#if customFields.length === 0}
+							<div class="text-xs text-zinc-400 text-center py-2">
+								Chưa có trường tùy biến nào. Nhấn nút thêm để tạo.
+							</div>
+						{:else}
+							{#each customFields as field, index}
+								<div class="flex items-center gap-3 animate-slide-in">
+									<div class="flex-grow grid grid-cols-2 gap-3">
+										<Input
+											id="custom-field-key-{index}"
+											placeholder="Tên trường (ví dụ: License)"
+											bind:value={field.key}
+											required
+										/>
+										<Input
+											id="custom-field-val-{index}"
+											placeholder="Giá trị (ví dụ: GPLv3)"
+											bind:value={field.value}
+											required
+										/>
 									</div>
-								{/each}
-							{/if}
-						</div>
-					</Card>
-				</div>
+									<button
+										type="button"
+										onclick={() => removeCustomField(index)}
+										class="p-2.5 text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-xl transition-all cursor-pointer"
+										title="Xóa trường"
+									>
+										<span class="icon-[lucide--x] h-4.5 w-4.5"></span>
+									</button>
+								</div>
+							{/each}
+						{/if}
+					</div>
+				</Card>
+			</div>
 
-				<!-- Right column: Save actions, categories and tags (col-span-4) -->
-				<div class="lg:col-span-4 flex flex-col gap-6">
-					<!-- Toggle Download Option -->
-					<Card hover={false} span="flex flex-col gap-4 p-5">
+			<!-- Right Column: Category, Tags selection, Toggles & Save Action (col-span-4) -->
+			<div class="lg:col-span-4 flex flex-col gap-6">
+				<!-- Category Card -->
+				<Card hover={false} span="flex flex-col gap-4 p-5">
+					<h3 class="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
+						Danh Mục Phân Loại
+					</h3>
+
+					<div class="max-h-60 overflow-y-auto flex flex-col gap-2.5 pl-1 pr-2">
+						{#if data.categories.length === 0}
+							<div class="text-xs text-zinc-400">
+								Chưa có danh mục nào. Hãy tạo danh mục trước ở trang Quản lý Danh mục.
+							</div>
+						{:else}
+							{#each data.categories as category}
+								<label class="flex items-center gap-2.5 text-sm text-zinc-700 dark:text-zinc-300 cursor-pointer">
+									<input
+										type="checkbox"
+										value={category.id}
+										checked={selectedCategoryIds.includes(category.id)}
+										onchange={() => toggleCategory(category.id)}
+										class="rounded border-zinc-350 dark:border-zinc-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+									/>
+									<span>{category.name}</span>
+								</label>
+							{/each}
+						{/if}
+					</div>
+
+					<div class="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+						{#if !showQuickCategory}
+							<button type="button" onclick={() => showQuickCategory = true} class="text-xs text-emerald-500 hover:text-emerald-600 font-bold flex items-center gap-1 cursor-pointer">
+								+ Thêm nhanh danh mục mới
+							</button>
+						{:else}
+							<div class="flex flex-col gap-2 animate-slide-in">
+								<Input id="quick-cat-name" placeholder="Tên danh mục mới" bind:value={quickCategoryName} />
+								<div class="flex gap-2 justify-end">
+									<Button type="button" variant="ghost" size="sm" onclick={() => showQuickCategory = false}>Hủy</Button>
+									<Button type="button" variant="primary" size="sm" onclick={submitQuickCategory}>Thêm</Button>
+								</div>
+							</div>
+						{/if}
+					</div>
+				</Card>
+
+				<!-- UI Feature Config Toggles Card -->
+				<Card hover={false} span="flex flex-col gap-4 p-5">
+					<h3 class="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
+						Cấu Hình Tính Năng Giao Diện
+					</h3>
+
+					<div class="flex flex-col gap-3.5">
+						<!-- Toggle Slideshow -->
 						<div class="flex items-center justify-between">
-							<div class="flex flex-col gap-0.5">
-								<span class="text-xs font-bold text-zinc-900 dark:text-white"
-									>Cho phép tải về</span
-								>
-								<span class="text-[10px] text-zinc-400"
-									>Người dùng có thể download tệp ZIP</span
-								>
+							<div class="flex flex-col gap-0.5 font-sans">
+								<span class="text-xs font-bold text-zinc-700 dark:text-zinc-355">Slideshow Showcase</span>
+								<span class="text-[10px] text-zinc-400">Hiển thị slide ảnh giới thiệu</span>
+							</div>
+							<button
+								type="button"
+								onclick={() => {
+									enableSlideshow = !enableSlideshow;
+								}}
+								class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none
+								{enableSlideshow ? 'bg-emerald-500' : 'bg-zinc-200 dark:bg-zinc-850'}"
+							>
+								<span
+									class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {enableSlideshow
+										? 'translate-x-4'
+										: 'translate-x-0'}"
+								></span>
+							</button>
+						</div>
+
+						<!-- Toggle Guides -->
+						<div class="flex items-center justify-between">
+							<div class="flex flex-col gap-0.5 font-sans">
+								<span class="text-xs font-bold text-zinc-700 dark:text-zinc-355">Hướng Dẫn Cài Đặt</span>
+								<span class="text-[10px] text-zinc-400">Hiển thị tab hướng dẫn sử dụng</span>
+							</div>
+							<button
+								type="button"
+								onclick={() => {
+									enableGuides = !enableGuides;
+								}}
+								class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none
+								{enableGuides ? 'bg-emerald-500' : 'bg-zinc-200 dark:bg-zinc-850'}"
+							>
+								<span
+									class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {enableGuides
+										? 'translate-x-4'
+										: 'translate-x-0'}"
+								></span>
+							</button>
+						</div>
+
+						<!-- Toggle FAQs -->
+						<div class="flex items-center justify-between">
+							<div class="flex flex-col gap-0.5 font-sans">
+								<span class="text-xs font-bold text-zinc-700 dark:text-zinc-355">Hỏi Đáp FAQ</span>
+								<span class="text-[10px] text-zinc-400">Hiển thị tab câu hỏi thường gặp</span>
+							</div>
+							<button
+								type="button"
+								onclick={() => {
+									enableFaqs = !enableFaqs;
+								}}
+								class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none
+								{enableFaqs ? 'bg-emerald-500' : 'bg-zinc-200 dark:bg-zinc-850'}"
+							>
+								<span
+									class="pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {enableFaqs
+										? 'translate-x-4'
+										: 'translate-x-0'}"
+								></span>
+							</button>
+						</div>
+
+						<!-- Toggle Download (Versions) -->
+						<div class="flex items-center justify-between border-t border-zinc-100 dark:border-zinc-800/80 pt-3">
+							<div class="flex flex-col gap-0.5 font-sans">
+								<span class="text-xs font-bold text-zinc-700 dark:text-zinc-355">Tải về sản phẩm</span>
+								<span class="text-[10px] text-zinc-400">Có liên kết tải file phiên bản</span>
 							</div>
 							<button
 								type="button"
@@ -499,53 +1014,21 @@
 								></span>
 							</button>
 						</div>
-					</Card>
+					</div>
+				</Card>
 
-					<!-- Category checklist -->
-					<Card hover={false} span="flex flex-col gap-4 p-5">
-						<h3 class="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
-							Danh Mục
-						</h3>
+				<!-- Tags Card -->
+				<Card hover={false} span="flex flex-col gap-4 p-5">
+					<h3 class="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
+						Thẻ Từ Khóa (Tags)
+					</h3>
 
-						<div class="max-h-60 overflow-y-auto flex flex-col gap-2.5 pl-1 pr-2">
-							{#each data.categories as category}
-								<label class="flex items-center gap-2.5 text-sm text-zinc-700 dark:text-zinc-300 cursor-pointer">
-									<input
-										type="radio"
-										name="categoryId"
-										value={category.id}
-										bind:group={categoryId}
-										class="rounded border-zinc-350 dark:border-zinc-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-									/>
-									<span>{category.name}</span>
-								</label>
-							{/each}
-						</div>
-
-						<div class="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-							{#if !showQuickCategory}
-								<button type="button" onclick={() => showQuickCategory = true} class="text-xs text-emerald-500 hover:text-emerald-600 font-bold flex items-center gap-1 cursor-pointer">
-									+ Thêm nhanh danh mục mới
-								</button>
-							{:else}
-								<div class="flex flex-col gap-2 animate-slide-in">
-									<Input id="quick-cat-name" placeholder="Tên danh mục mới" bind:value={quickCategoryName} />
-									<div class="flex gap-2 justify-end">
-										<Button type="button" variant="ghost" size="sm" onclick={() => showQuickCategory = false}>Hủy</Button>
-										<Button type="button" variant="primary" size="sm" onclick={submitQuickCategory}>Thêm</Button>
-									</div>
-								</div>
-							{/if}
-						</div>
-					</Card>
-
-					<!-- Tag checklist -->
-					<Card hover={false} span="flex flex-col gap-4 p-5">
-						<h3 class="text-sm font-bold text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800/60 pb-2">
-							Thẻ Tag
-						</h3>
-
-						<div class="max-h-60 overflow-y-auto flex flex-wrap gap-2 pl-1 pr-2">
+					<div class="max-h-60 overflow-y-auto flex flex-wrap gap-2 pl-1 pr-2">
+						{#if data.tags.length === 0}
+							<div class="text-xs text-zinc-400">
+								Chưa có thẻ tag nào. Tạo thẻ tag trước ở trang Quản lý Tags.
+							</div>
+						{:else}
 							{#each data.tags as tag}
 								{@const isSelected = selectedTagIds.includes(tag.id)}
 								<button
@@ -559,152 +1042,54 @@
 									#{tag.name}
 								</button>
 							{/each}
-						</div>
-
-						<div class="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800 w-full">
-							{#if !showQuickTag}
-								<button type="button" onclick={() => showQuickTag = true} class="text-xs text-emerald-500 hover:text-emerald-600 font-bold flex items-center gap-1 cursor-pointer">
-									+ Thêm nhanh thẻ mới
-								</button>
-							{:else}
-								<div class="flex flex-col gap-2 w-full animate-slide-in">
-									<Input id="quick-tag-name" placeholder="Tên thẻ mới" bind:value={quickTagName} />
-									<div class="flex gap-2 justify-end">
-										<Button type="button" variant="ghost" size="sm" onclick={() => showQuickTag = false}>Hủy</Button>
-										<Button type="button" variant="primary" size="sm" onclick={submitQuickTag}>Thêm</Button>
-									</div>
-								</div>
-							{/if}
-						</div>
-					</Card>
-
-					<!-- Action Buttons -->
-					<Card hover={false} span="flex flex-col gap-4 p-5 bg-gradient-to-tr from-emerald-500/5 to-sky-500/5 border border-emerald-500/10">
-						<h3 class="text-sm font-bold text-zinc-900 dark:text-white">
-							Lưu Cập Nhật
-						</h3>
-						<p class="text-[10px] text-zinc-450 dark:text-zinc-500">
-							Cập nhật sản phẩm sẽ thay đổi ngay thông tin hiển thị của sản phẩm trên trang công khai.
-						</p>
-
-						{#if form?.message}
-							<div class="text-xs text-rose-500 font-bold">{form.message}</div>
 						{/if}
+					</div>
 
-						<div class="flex flex-col gap-2 mt-2">
-							<Button type="submit" variant="primary" size="md" class="w-full">
-								Lưu sản phẩm
-							</Button>
-							<a
-								href="/admin?tab=products"
-								class="py-2.5 text-center text-xs font-bold text-zinc-500 hover:text-zinc-800 dark:hover:text-white rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/40 zen-transition"
-							>
-								Quay lại Dashboard
-							</a>
-						</div>
-					</Card>
-				</div>
-			</div>
-		</form>
-	{/if}
+					<div class="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800 w-full font-sans">
+						{#if !showQuickTag}
+							<button type="button" onclick={() => showQuickTag = true} class="text-xs text-emerald-500 hover:text-emerald-600 font-bold flex items-center gap-1 cursor-pointer">
+								+ Thêm nhanh thẻ mới
+							</button>
+						{:else}
+							<div class="flex flex-col gap-2 w-full animate-slide-in">
+								<Input id="quick-tag-name" placeholder="Tên thẻ mới" bind:value={quickTagName} />
+								<div class="flex gap-2 justify-end">
+									<Button type="button" variant="ghost" size="sm" onclick={() => showQuickTag = false}>Hủy</Button>
+									<Button type="button" variant="primary" size="sm" onclick={submitQuickTag}>Thêm</Button>
+								</div>
+							</div>
+						{/if}
+					</div>
+				</Card>
 
-	<!-- TAB 2: VERSION MANAGEMENT -->
-	{#if currentSubTab === 'versions' && enableDownload}
-		<div class="flex flex-col gap-6">
-			<!-- Versions List Card -->
-			<div
-				class="rounded-3xl border border-zinc-200/50 bg-white/60 p-6 backdrop-blur-xl dark:border-zinc-800/80 dark:bg-zinc-900/60 shadow-sm"
-			>
-				<div class="flex items-center justify-between gap-4 mb-4">
+				<!-- Save Action Card -->
+				<Card hover={false} span="flex flex-col gap-4 p-5 bg-gradient-to-tr from-emerald-500/5 to-sky-500/5 border border-emerald-500/10">
 					<h3 class="text-sm font-bold text-zinc-900 dark:text-white">
-						Lịch Sử Phiên Bản Sản Phẩm
+						Lưu Thay Đổi
 					</h3>
-					<Button variant="primary" size="sm" onclick={openVersionModal}>
-						+ Thêm Phiên Bản
-					</Button>
-				</div>
+					<p class="text-[11px] text-zinc-500 font-sans">
+						Nhấn nút "Lưu sản phẩm" để lưu tất cả cập nhật vào cơ sở dữ liệu và đồng bộ hóa vector AI.
+					</p>
 
-				<div class="overflow-x-auto w-full">
-					<table class="w-full border-collapse text-left text-sm text-zinc-600 dark:text-zinc-300">
-						<thead>
-							<tr class="border-b border-zinc-200/50 dark:border-zinc-800/65">
-								<th class="pb-3 font-bold text-zinc-900 dark:text-white">Phiên bản</th>
-								<th class="pb-3 font-bold text-zinc-900 dark:text-white">Kích thước</th>
-								<th class="pb-3 font-bold text-zinc-900 dark:text-white">Kiểu file</th>
-								<th class="pb-3 font-bold text-zinc-900 dark:text-white">Ngày tạo</th>
-								<th class="pb-3 font-bold text-zinc-900 dark:text-white">Trạng thái</th>
-								<th class="pb-3 font-bold text-zinc-900 dark:text-white text-right">Hành động</th>
-							</tr>
-						</thead>
-						<tbody class="divide-y divide-zinc-200/30 dark:divide-zinc-800/40">
-							{#if data.versions.length === 0}
-								<tr>
-									<td colspan="6" class="py-6 text-center text-zinc-400">
-										Chưa có phiên bản nào cho sản phẩm này. Hãy tạo phiên bản đầu tiên.
-									</td>
-								</tr>
-							{:else}
-								{#each data.versions.sort((a, b) => new Date(b.createdAt ?? '').getTime() - new Date(a.createdAt ?? '').getTime()) as version}
-									<tr class="group hover:bg-zinc-50/40 dark:hover:bg-zinc-800/10">
-										<td class="py-3.5 font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-											{version.versionNumber}
-											{#if version.isCurrentActive}
-												<Badge variant="success" class="text-[9px] py-0.5 px-1.5">Active</Badge>
-											{/if}
-										</td>
-										<td class="py-3.5 text-xs font-mono">{version.fileSize || '—'}</td>
-										<td class="py-3.5 text-xs text-zinc-450">{version.fileType || '—'}</td>
-										<td class="py-3.5 text-xs text-zinc-500">
-											{new Date(version.createdAt ?? '').toLocaleDateString('vi-VN')}
-										</td>
-										<td class="py-3.5 text-xs">
-											{#if version.isCurrentActive}
-												<span class="text-emerald-500 font-bold">Hiện hành</span>
-											{:else}
-												<span class="text-zinc-400">Lưu trữ</span>
-											{/if}
-										</td>
-										<td class="py-3.5 text-right">
-											<div class="flex items-center justify-end gap-2">
-												{#if !version.isCurrentActive}
-													<form method="POST" action="?/setActiveVersion" use:enhance>
-														<input type="hidden" name="versionId" value={version.id} />
-														<Button type="submit" variant="secondary" size="sm">
-															Kích hoạt
-														</Button>
-													</form>
-												{/if}
+					{#if form?.message}
+						<div class="text-xs text-rose-500 font-bold">{form.message}</div>
+					{/if}
 
-												<form method="POST" action="?/deleteVersion" use:enhance>
-													<input type="hidden" name="versionId" value={version.id} />
-													<button
-														type="submit"
-														onclick={(e) => {
-															if (
-																!confirm(
-																	`Bạn có chắc muốn xóa phiên bản "${version.versionNumber}"?`
-																)
-															) {
-																e.preventDefault();
-															}
-														}}
-														class="p-1.5 text-zinc-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all cursor-pointer"
-														title="Xóa phiên bản"
-													>
-														<span class="icon-[lucide--trash-2] h-4 w-4"></span>
-													</button>
-												</form>
-											</div>
-										</td>
-									</tr>
-								{/each}
-							{/if}
-						</tbody>
-					</table>
-				</div>
+					<div class="flex flex-col gap-2 mt-2 font-sans">
+						<Button type="submit" variant="primary" size="md" class="w-full cursor-pointer">
+							Lưu sản phẩm
+						</Button>
+						<a
+							href="/admin?tab=products"
+							class="py-2.5 text-center text-xs font-bold text-zinc-500 hover:text-zinc-800 dark:hover:text-white rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800/40 zen-transition"
+						>
+							Hủy bỏ
+						</a>
+					</div>
+				</Card>
 			</div>
 		</div>
-	{/if}
+	</form>
 </div>
 
 <!-- Modal: Add New Version -->
@@ -722,14 +1107,14 @@
 		}}
 		class="flex flex-col gap-4 mt-2 text-left"
 	>
-		<div class="flex flex-col gap-1">
+		<div class="flex flex-col gap-1 font-sans">
 			<label for="new-ver-num" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
 				>Số phiên bản (Version Number) <span class="text-rose-500">*</span></label
 			>
 			<Input id="new-ver-num" name="versionNumber" placeholder="Ví dụ: v1.3.0" bind:value={newVersionNumber} required />
 		</div>
 
-		<div class="flex flex-col gap-1">
+		<div class="flex flex-col gap-1 font-sans">
 			<label for="new-ver-file" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
 				>Tệp ZIP phiên bản <span class="text-rose-500">*</span></label
 			>
@@ -743,22 +1128,32 @@
 			/>
 		</div>
 
-		<div class="flex flex-col gap-1">
-			<label for="new-ver-changelog" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
-				>Nhật ký cập nhật (Changelog Raw) <span class="text-rose-500">*</span></label
-			>
+		<div class="flex flex-col gap-1.5 font-sans">
+			<div class="flex items-center justify-between">
+				<label for="new-ver-changelog" class="text-xs font-bold text-zinc-650 dark:text-zinc-300"
+					>Nhật ký cập nhật (Changelog Raw) <span class="text-rose-500">*</span></label
+				>
+				<button
+					type="button"
+					onclick={() => openAIModal('changelog')}
+					class="flex items-center gap-1 text-[11px] text-emerald-500 hover:text-emerald-600 transition-colors font-bold cursor-pointer"
+				>
+					<span class="icon-[lucide--sparkles] w-3.5 h-3.5"></span>
+					Biên soạn bằng AI
+				</button>
+			</div>
 			<textarea
 				id="new-ver-changelog"
 				name="changelogRaw"
 				rows="5"
 				required
-				placeholder="Nhập nhật ký các thay đổi trong phiên bản mới..."
+				placeholder="Nhập nhật ký các thay đổi hoặc dán thông tin thô để AI hỗ trợ..."
 				bind:value={newChangelogRaw}
 				class="w-full rounded-xl border border-zinc-200 bg-white/50 px-4 py-2.5 text-sm outline-none transition-all duration-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-white"
 			></textarea>
 		</div>
 
-		<label class="flex items-center gap-2.5 text-sm text-zinc-700 dark:text-zinc-300 cursor-pointer mt-1">
+		<label class="flex items-center gap-2.5 text-sm text-zinc-700 dark:text-zinc-300 cursor-pointer mt-1 font-sans">
 			<input
 				type="checkbox"
 				name="makeActive"
@@ -769,9 +1164,35 @@
 			<span>Đặt làm phiên bản hiện hành (Kích hoạt công khai)</span>
 		</label>
 
-		<div class="flex justify-end gap-3 mt-5">
+		<div class="flex justify-end gap-3 mt-5 font-sans">
 			<Button type="button" variant="secondary" size="md" onclick={closeVersionModal}>Hủy bỏ</Button>
-			<Button type="submit" variant="primary" size="md">Tải lên</Button>
+			<Button type="submit" variant="primary" size="md" class="cursor-pointer">Tải lên</Button>
 		</div>
 	</form>
 </Modal>
+
+<!-- Reusable Localized AI Modal -->
+<AIModal
+	bind:open={aiModalOpen}
+	fieldName={aiModalField}
+	productName={name || 'Sản phẩm'}
+	layoutType={activeLayout.id}
+	currentValue={aiModalField === 'detailedDescription' ? detailedDescription : aiModalField === 'guides' ? guidesJson : aiModalField === 'faqs' ? faqsJson : newChangelogRaw}
+	onapply={handleAIApply}
+/>
+
+<style>
+	:global(.tab-content-panel) {
+		animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+	}
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+			transform: translateY(8px) scale(0.995);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0) scale(1);
+		}
+	}
+</style>

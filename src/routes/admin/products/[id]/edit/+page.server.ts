@@ -1,10 +1,12 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { db } from '$lib/server/db/client';
-import { categories, tags, products, productTags, productVersions } from '$lib/server/db/schema';
+import { categories, tags, products, productTags, productCategories, productVersions, productDocuments } from '$lib/server/db/schema';
 import { eq, and, or } from 'drizzle-orm';
 import { requirePermission } from '$lib/server/auth/guards';
 import { saveFile } from '$lib/server/storage/upload';
+import { generateProductContent } from '$lib/server/ai/client';
+import { syncProductKnowledge } from '$lib/server/ai/rag';
 
 export const load: PageServerLoad = async (event) => {
 	if (!event.locals.user) {
@@ -44,11 +46,23 @@ export const load: PageServerLoad = async (event) => {
 		.from(productTags)
 		.where(eq(productTags.productId, product.id));
 
+	// Fetch currently selected categories
+	const selectedCats = await db
+		.select({ categoryId: productCategories.categoryId })
+		.from(productCategories)
+		.where(eq(productCategories.productId, product.id));
+
 	// Fetch product versions
 	const versions = await db
 		.select()
 		.from(productVersions)
 		.where(eq(productVersions.productId, product.id));
+
+	// Fetch raw documents
+	const docs = await db
+		.select()
+		.from(productDocuments)
+		.where(eq(productDocuments.productId, product.id));
 
 	const formattedProduct = {
 		...product,
@@ -61,7 +75,9 @@ export const load: PageServerLoad = async (event) => {
 		categories: allCategories,
 		tags: allTags,
 		selectedTagIds: selectedTags.map((t) => t.tagId),
-		versions
+		selectedCategoryIds: selectedCats.map((c) => c.categoryId),
+		versions,
+		documents: docs
 	};
 };
 
@@ -98,7 +114,8 @@ export const actions: Actions = {
 		// Basic fields
 		const name = data.get('name') as string;
 		let slug = data.get('slug') as string;
-		const categoryId = data.get('categoryId') as string || null;
+		const categoryIds = data.getAll('categoryIds') as string[];
+		const categoryId = categoryIds[0] || null;
 		const description = data.get('description') as string;
 		const detailedDescription = data.get('detailedDescription') as string;
 		const icon = data.get('icon') as string || 'icon-[lucide--package]';
@@ -164,6 +181,28 @@ export const actions: Actions = {
 				}
 			}
 
+			// Parse Toggles
+			const enableSlideshow = data.get('enableSlideshow') === 'true';
+			const enableGuides = data.get('enableGuides') === 'true';
+			const enableFaqs = data.get('enableFaqs') === 'true';
+
+			// Parse Guides & FAQs
+			const guidesJson = data.get('guidesJson') as string;
+			let guides = [];
+			if (guidesJson) {
+				try {
+					guides = JSON.parse(guidesJson);
+				} catch (e) {}
+			}
+
+			const faqsJson = data.get('faqsJson') as string;
+			let faqs = [];
+			if (faqsJson) {
+				try {
+					faqs = JSON.parse(faqsJson);
+				} catch (e) {}
+			}
+
 			// Update product
 			await db
 				.update(products)
@@ -182,6 +221,11 @@ export const actions: Actions = {
 					slideshowImages: slideshowUrls,
 					customFields,
 					enableDownload,
+					enableSlideshow,
+					enableGuides,
+					enableFaqs,
+					guides,
+					faqs,
 					updatedAt: new Date()
 				})
 				.where(eq(products.id, product.id));
@@ -195,6 +239,18 @@ export const actions: Actions = {
 					tagId: tagId
 				});
 			}
+
+			// Re-associate categories
+			await db.delete(productCategories).where(eq(productCategories.productId, product.id));
+			for (const catId of categoryIds) {
+				await db.insert(productCategories).values({
+					productId: product.id,
+					categoryId: catId
+				});
+			}
+			
+			// Re-sync pgvector RAG index
+			await syncProductKnowledge(product.id);
 
 			return { success: true };
 		} catch (err: any) {
@@ -464,6 +520,219 @@ export const actions: Actions = {
 			return { success: true };
 		} catch (err: any) {
 			return fail(500, { message: err.message || 'Lỗi hệ thống khi xóa phiên bản' });
+		}
+	},
+
+	uploadDocument: async (event) => {
+		requirePermission(event, 'tools:create');
+		const orgId = event.locals.user!.organizationId!;
+		const productId = event.params.id;
+		const data = await event.request.formData();
+		const file = data.get('documentFile') as File;
+
+		if (!file || file.size === 0) {
+			return fail(400, { message: 'Tệp tải lên không hợp lệ hoặc rỗng.' });
+		}
+
+		try {
+			// Find product
+			const [product] = await db
+				.select()
+				.from(products)
+				.where(and(eq(products.id, productId), eq(products.organizationId, orgId)))
+				.limit(1);
+
+			if (!product) {
+				return fail(404, { message: 'Không tìm thấy sản phẩm' });
+			}
+
+			// Read file content
+			const buffer = Buffer.from(await file.arrayBuffer());
+			let content = '';
+			const filenameLower = file.name.toLowerCase();
+			if (filenameLower.endsWith('.txt') || filenameLower.endsWith('.md')) {
+				content = buffer.toString('utf-8');
+			} else {
+				// Stub representation
+				content = `[Nội dung trích xuất từ tài liệu thô ${file.name}]\n` + buffer.toString('ascii').replace(/[^\x20-\x7E\r\n]/g, '').substring(0, 2000);
+			}
+
+			// Save to database
+			await db.insert(productDocuments).values({
+				productId: product.id,
+				fileName: file.name,
+				fileUrl: '',
+				rawContent: content,
+				fileType: filenameLower.endsWith('.md') ? 'markdown' : 'txt'
+			});
+
+			return { success: true };
+		} catch (e: any) {
+			return fail(500, { message: e.message || 'Không thể tải lên tài liệu' });
+		}
+	},
+
+	deleteDocument: async (event) => {
+		requirePermission(event, 'tools:create');
+		const orgId = event.locals.user!.organizationId!;
+		const productId = event.params.id;
+		const data = await event.request.formData();
+		const docId = data.get('docId') as string;
+
+		if (!docId) return fail(400, { message: 'ID tài liệu không hợp lệ' });
+
+		try {
+			// Find product
+			const [product] = await db
+				.select()
+				.from(products)
+				.where(and(eq(products.id, productId), eq(products.organizationId, orgId)))
+				.limit(1);
+
+			if (!product) {
+				return fail(404, { message: 'Không tìm thấy sản phẩm' });
+			}
+
+			await db
+				.delete(productDocuments)
+				.where(and(eq(productDocuments.id, docId), eq(productDocuments.productId, product.id)));
+
+			return { success: true };
+		} catch (e: any) {
+			return fail(500, { message: e.message || 'Lỗi khi xóa tài liệu' });
+		}
+	},
+
+	generateDraft: async (event) => {
+		requirePermission(event, 'tools:create');
+		const orgId = event.locals.user!.organizationId!;
+		const productId = event.params.id;
+
+		try {
+			// Load product & category layout
+			const [product] = await db
+				.select()
+				.from(products)
+				.where(and(eq(products.id, productId), eq(products.organizationId, orgId)))
+				.limit(1);
+
+			if (!product) {
+				return fail(404, { message: 'Không tìm thấy sản phẩm' });
+			}
+
+			// Get category layout type
+			let layoutType = 'other';
+			if (product.categoryId) {
+				const [cat] = await db.select().from(categories).where(eq(categories.id, product.categoryId)).limit(1);
+				if (cat) layoutType = cat.layoutType || 'other';
+			}
+
+			// Load all documents
+			const docs = await db
+				.select()
+				.from(productDocuments)
+				.where(eq(productDocuments.productId, product.id));
+
+			if (docs.length === 0) {
+				return fail(400, { message: 'Vui lòng tải lên ít nhất một tài liệu thô trước khi phân tích.' });
+			}
+
+			const combinedText = docs.map((d) => `--- FILE: ${d.fileName} ---\n${d.rawContent}`).join('\n\n');
+
+			// Call AI generator
+			const generated = await generateProductContent(product.name, layoutType, combinedText);
+
+			// Save to draft fields
+			await db
+				.update(products)
+				.set({
+					detailedDescriptionDraft: generated.detailedDescription,
+					guidesDraft: generated.guides,
+					faqsDraft: generated.faqs,
+					draftStatus: 'pending_approval'
+				})
+				.where(eq(products.id, product.id));
+
+			return { success: true };
+		} catch (e: any) {
+			return fail(500, { message: e.message || 'Lỗi AI phân tích tài liệu thô' });
+		}
+	},
+
+	approveDraft: async (event) => {
+		requirePermission(event, 'tools:create');
+		const orgId = event.locals.user!.organizationId!;
+		const productId = event.params.id;
+
+		try {
+			const [product] = await db
+				.select()
+				.from(products)
+				.where(and(eq(products.id, productId), eq(products.organizationId, orgId)))
+				.limit(1);
+
+			if (!product) {
+				return fail(404, { message: 'Không tìm thấy sản phẩm' });
+			}
+
+			if (product.draftStatus !== 'pending_approval') {
+				return fail(400, { message: 'Không có bản nháp nào đang chờ duyệt' });
+			}
+
+			// Merge drafts to production
+			await db
+				.update(products)
+				.set({
+					detailedDescription: product.detailedDescriptionDraft || product.detailedDescription,
+					guides: product.guidesDraft || product.guides,
+					faqs: product.faqsDraft || product.faqs,
+					detailedDescriptionDraft: null,
+					guidesDraft: null,
+					faqsDraft: null,
+					draftStatus: 'approved',
+					updatedAt: new Date()
+				})
+				.where(eq(products.id, product.id));
+
+			// Re-sync RAG knowledge vectors
+			await syncProductKnowledge(product.id);
+
+			return { success: true };
+		} catch (e: any) {
+			return fail(500, { message: e.message || 'Lỗi khi duyệt bản nháp' });
+		}
+	},
+
+	rejectDraft: async (event) => {
+		requirePermission(event, 'tools:create');
+		const orgId = event.locals.user!.organizationId!;
+		const productId = event.params.id;
+
+		try {
+			const [product] = await db
+				.select()
+				.from(products)
+				.where(and(eq(products.id, productId), eq(products.organizationId, orgId)))
+				.limit(1);
+
+			if (!product) {
+				return fail(404, { message: 'Không tìm thấy sản phẩm' });
+			}
+
+			// Discard drafts
+			await db
+				.update(products)
+				.set({
+					detailedDescriptionDraft: null,
+					guidesDraft: null,
+					faqsDraft: null,
+					draftStatus: 'rejected'
+				})
+				.where(eq(products.id, product.id));
+
+			return { success: true };
+		} catch (e: any) {
+			return fail(500, { message: e.message || 'Lỗi khi hủy bản nháp' });
 		}
 	}
 };

@@ -187,9 +187,12 @@ export async function seed() {
 
 	// --- Seed Categories ---
 	const categoriesToSeed = [
-		{ name: 'WordPress Plugin', slug: 'wordpress-plugin', description: 'WordPress Plugins và Add-ons' },
-		{ name: 'CMS Tool', slug: 'cms-tool', description: 'Các công cụ CMS và mã nguồn độc lập' },
-		{ name: 'Mini Game', slug: 'mini-game', description: 'Các trò chơi mini HTML5 và game tương tác' }
+		{ name: 'WordPress Plugin', slug: 'wordpress-plugin', description: 'WordPress Plugins và Add-ons', layoutType: 'plugin_tools_game' },
+		{ name: 'CMS Tool', slug: 'cms-tool', description: 'Các công cụ CMS và mã nguồn độc lập', layoutType: 'cms_tools' },
+		{ name: 'Mini Game', slug: 'mini-game', description: 'Các trò chơi mini HTML5 và game tương tác', layoutType: 'plugin_tools_game' },
+		{ name: 'Documents & Tips', slug: 'documents-tips', description: 'Tài liệu và Thủ thuật hướng dẫn kỹ thuật', layoutType: 'documents_tips' },
+		{ name: 'Social Chatbot', slug: 'social-chatbot', description: 'Chatbot tích hợp mạng xã hội', layoutType: 'chatbot_social' },
+		{ name: 'Other', slug: 'other', description: 'Các sản phẩm và công cụ khác', layoutType: 'other' }
 	];
 	const categoryMap: Record<string, string> = {};
 	for (const cat of categoriesToSeed) {
@@ -199,7 +202,8 @@ export async function seed() {
 				organizationId: org.id,
 				name: cat.name,
 				slug: cat.slug,
-				description: cat.description
+				description: cat.description,
+				layoutType: cat.layoutType
 			})
 			.returning();
 		categoryMap[cat.name] = seededCat.id;
