@@ -11,9 +11,6 @@
     }
   ],
   "modelAliases": {
-    "fast-model": "gemini-1.5-flash",
-    "smart-model": "claude-3-5-sonnet",
-    "code-model": "deepseek-coder",
     "DeepSeek V4 Flash Free": "DeepSeek"
   },
   "providerNodes": [],

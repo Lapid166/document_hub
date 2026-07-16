@@ -313,15 +313,40 @@
 		}
 	}
 
+	let editingAliasKey = $state<string | null>(null);
+
 	function addModelAlias() {
 		if (!newAliasKey.trim() || !newAliasVal.trim()) return;
-		modelAliases = { ...modelAliases, [newAliasKey.trim()]: newAliasVal.trim() };
+		
+		const updated = { ...modelAliases };
+		if (editingAliasKey && editingAliasKey !== newAliasKey.trim()) {
+			delete updated[editingAliasKey];
+		}
+		updated[newAliasKey.trim()] = newAliasVal.trim();
+		modelAliases = updated;
+		
 		newAliasKey = '';
 		newAliasVal = '';
+		editingAliasKey = null;
 		saveModelAliases();
 	}
 
+	function startEditModelAlias(key: string) {
+		editingAliasKey = key;
+		newAliasKey = key;
+		newAliasVal = modelAliases[key];
+	}
+
+	function cancelEditModelAlias() {
+		editingAliasKey = null;
+		newAliasKey = '';
+		newAliasVal = '';
+	}
+
 	function removeModelAlias(key: string) {
+		if (editingAliasKey === key) {
+			cancelEditModelAlias();
+		}
 		const updated = { ...modelAliases };
 		delete updated[key];
 		modelAliases = updated;
@@ -552,9 +577,11 @@
 				</div>
 
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-					<!-- Form thêm nhanh -->
+					<!-- Form thêm / sửa nhanh -->
 					<div class="flex flex-col gap-3 p-4 rounded-xl border border-zinc-200/50 dark:border-zinc-800 bg-zinc-50/40 dark:bg-zinc-900/30">
-						<h4 class="text-xs font-bold text-zinc-800 dark:text-zinc-200 font-sans">Thêm Alias Mới</h4>
+						<h4 class="text-xs font-bold text-zinc-800 dark:text-zinc-200 font-sans">
+							{editingAliasKey ? 'Cập nhật Model Alias' : 'Thêm Alias Mới'}
+						</h4>
 						<div class="flex flex-col gap-1">
 							<label class="text-[10px] text-zinc-400 uppercase font-semibold font-sans">Tên Alias (Sử dụng trong Code/Assistant)</label>
 							<Input id="new-alias-key" placeholder="Ví dụ: fast-model" bind:value={newAliasKey} />
@@ -563,10 +590,19 @@
 							<label class="text-[10px] text-zinc-400 uppercase font-semibold font-sans">Tên Model gốc của Provider</label>
 							<Input id="new-alias-val" placeholder="Ví dụ: gemini-1.5-flash hoặc claude-3-5-sonnet" bind:value={newAliasVal} />
 						</div>
-						<div class="flex justify-end mt-1">
-							<Button variant="primary" size="sm" onclick={addModelAlias}>
-								+ Thêm Alias
-							</Button>
+						<div class="flex justify-end gap-2 mt-1">
+							{#if editingAliasKey}
+								<Button variant="secondary" size="sm" onclick={cancelEditModelAlias}>
+									Hủy
+								</Button>
+								<Button variant="primary" size="sm" onclick={addModelAlias}>
+									Lưu Thay Đổi
+								</Button>
+							{:else}
+								<Button variant="primary" size="sm" onclick={addModelAlias}>
+									+ Thêm Alias
+								</Button>
+							{/if}
 						</div>
 					</div>
 
@@ -583,9 +619,14 @@
 											<span class="font-bold text-zinc-900 dark:text-white font-mono">{key}</span>
 											<span class="text-[10px] text-zinc-450 font-mono mt-0.5">→ {val}</span>
 										</div>
-										<button type="button" onclick={() => removeModelAlias(key)} class="p-1 text-zinc-450 hover:text-rose-500 hover:bg-rose-500/10 rounded transition-all cursor-pointer">
-											<span class="icon-[lucide--trash-2] h-4 w-4"></span>
-										</button>
+										<div class="flex gap-1.5">
+											<button type="button" onclick={() => startEditModelAlias(key)} class="p-1 text-zinc-450 hover:text-emerald-500 hover:bg-emerald-500/10 rounded transition-all cursor-pointer">
+												<span class="icon-[lucide--edit-3] h-4 w-4"></span>
+											</button>
+											<button type="button" onclick={() => removeModelAlias(key)} class="p-1 text-zinc-450 hover:text-rose-500 hover:bg-rose-500/10 rounded transition-all cursor-pointer">
+												<span class="icon-[lucide--trash-2] h-4 w-4"></span>
+											</button>
+										</div>
 									</div>
 								{/each}
 							{/if}
