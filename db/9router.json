@@ -8,10 +8,20 @@
       "label": "OpenCode Demo Gateway",
       "baseURL": "https://opencode.ai/zen/v1",
       "isActive": true
+    },
+    {
+      "id": "conn-1784201640189",
+      "provider": "openai",
+      "apiKey": "qc_1e5e028beff6ba3ed640402a7d4c6ca3ca899f542fd511bd",
+      "authType": "api_key",
+      "label": "QuotaCheap",
+      "baseURL": "https://api.quota.cheap/v1",
+      "isActive": true
     }
   ],
   "modelAliases": {
-    "DeepSeek V4 Flash Free": "DeepSeek"
+    "deepseek-v4-free": "deepseek-v4-free",
+    "gpt-5.3-codex": "gpt-5.3-codex"
   },
   "providerNodes": [],
   "apiKeys": [],
