@@ -14,29 +14,29 @@ Hệ thống được thiết kế theo hướng **Single-tenant operation nhưn
 
 ```mermaid
 graph TD
-    Client[Client Browser / User & Admin] -->|HTTP / SSE Streaming| SvelteKit[SvelteKit Application Server]
+    Client["Client Browser / User & Admin"] -->|HTTP / SSE Streaming| SvelteKit["SvelteKit Application Server"]
     
-    subgraph Presentation & API Layer
-        SvelteKit -->|SSR / Public Pages| SSR[Server-Side Rendered Pages]
-        SvelteKit -->|CSR / Admin Console| CSR[Client-Side Rendered CMS]
+    subgraph pres["Presentation & API Layer"]
+        SvelteKit -->|SSR / Public Pages| SSR["Server-Side Rendered Pages"]
+        SvelteKit -->|CSR / Admin Console| CSR["Client-Side Rendered CMS"]
     end
 
-    subgraph Coordination Layer (Backend Engine)
-        SvelteKit -->|Internal Call| ContextRouter[MCP-inspired Context Router]
-        ContextRouter -->|1. Native Tool Call| LLM[LLM Provider API: OpenAI/Anthropic]
-        ContextRouter -->|2. Semantic Search| DB_Vector[(PostgreSQL + pgvector)]
-        ContextRouter -->|3. Rerank| Reranker[Cross-Encoder Reranker API]
+    subgraph coord["Coordination Layer (Backend Engine)"]
+        SvelteKit -->|Internal Call| ContextRouter["MCP-inspired Context Router"]
+        ContextRouter -->|1. Native Tool Call| LLM["LLM Provider API: OpenAI/Anthropic"]
+        ContextRouter -->|2. Semantic Search| DB_Vector[("PostgreSQL + pgvector")]
+        ContextRouter -->|3. Rerank| Reranker["Cross-Encoder Reranker API"]
         Reranker -->|Extract Top 3 Chunks| ContextRouter
     end
 
-    subgraph Storage Layer
-        DB_Vector -->|HNSW Index Search| HNSW[HNSW Vector Index]
-        DB_Vector -->|Relational Data| Relational[CMS Tables: Tools, Users, Audit Logs]
+    subgraph storage["Storage Layer"]
+        DB_Vector -->|HNSW Index Search| HNSW["HNSW Vector Index"]
+        DB_Vector -->|Relational Data| Relational["CMS Tables: Tools, Users, Audit Logs"]
     end
 
-    subgraph Background Queue (Async Worker)
-        SvelteKit -->|Push Job| Queue[Idempotent Job Queue]
-        Queue -->|Process| Worker[Async Job Worker]
+    subgraph queue_sub["Background Queue (Async Worker)"]
+        SvelteKit -->|Push Job| Queue["Idempotent Job Queue"]
+        Queue -->|Process| Worker["Async Job Worker"]
         Worker -->|Chunk & Embed| ContextRouter
     end
 ```
